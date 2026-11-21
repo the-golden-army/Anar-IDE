@@ -396,8 +396,9 @@ mod tests {
         assert_eq!(diags.relative_path, "src/main.rs");
         assert_eq!(diags.diagnostics.len(), 1);
         assert_eq!(diags.diagnostics[0].severity, DiagnosticSeverity::Error);
-        assert_eq!(diags.diagnostics[0].primary_span.as_ref().unwrap().line_start, 4);
-        assert_eq!(diags.diagnostics[0].primary_span.as_ref().unwrap().column_start, 9);
+        let span = diags.diagnostics[0].primary_span.as_ref().unwrap();
+        assert_eq!(span.line_start, 4);
+        assert_eq!(span.column_start, 9);
 
         let def_payload = json!([{
             "targetUri": uri,

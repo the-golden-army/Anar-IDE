@@ -144,17 +144,19 @@ impl LspManager {
 
         if let Some(session) = prev {
             session.shutdown_requested.store(true, Ordering::SeqCst);
-            let _ = session.writer_tx.send(json!({
+            let shutdown_req = json!({
                 "jsonrpc": "2.0",
                 "id": self.next_id(),
                 "method": "shutdown",
                 "params": Value::Null
-            }));
-            let _ = session.writer_tx.send(json!({
+            });
+            let exit_notif = json!({
                 "jsonrpc": "2.0",
                 "method": "exit",
                 "params": Value::Null
-            }));
+            });
+            let _ = session.writer_tx.send(shutdown_req);
+            let _ = session.writer_tx.send(exit_notif);
             if let Ok(mut pending) = session.pending.lock() {
                 for (_, tx) in pending.drain() {
                     let _ = tx.send(Err("rust-analyzer session stopped".to_string()));
@@ -467,11 +469,12 @@ impl LspManager {
                 } else {
                     Value::Null
                 };
-                let _ = writer_tx.send(json!({
+                let ack = json!({
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": result
-                }));
+                });
+                let _ = writer_tx.send(ack);
             }
             // Server-to-client notification.
             (Some(notif_method), None) => {
@@ -587,10 +590,8 @@ impl LspManager {
         let Some(uri) = self.uri_for_relative(relative_path) else {
             return Ok(());
         };
-        self.send_notification(
-            "textDocument/didSave",
-            json!({ "textDocument": { "uri": uri } }),
-        )
+        let params = json!({ "textDocument": { "uri": uri } });
+        self.send_notification("textDocument/didSave", params)
     }
 
     /// Sends `textDocument/didClose` and removes the buffer from replay tracking.
@@ -601,10 +602,8 @@ impl LspManager {
         let Some(uri) = self.uri_for_relative(relative_path) else {
             return Ok(());
         };
-        self.send_notification(
-            "textDocument/didClose",
-            json!({ "textDocument": { "uri": uri } }),
-        )
+        let params = json!({ "textDocument": { "uri": uri } });
+        self.send_notification("textDocument/didClose", params)
     }
 
     /// Queries `textDocument/completion` at a 0-based `(line, col)` cursor position.
@@ -844,12 +843,11 @@ mod tests {
                 buf: Mutex::new((VecDeque::new(), false)),
                 cv: Condvar::new(),
             });
-            (
-                PipeWriter {
-                    pipe: Arc::clone(&pipe),
-                },
-                PipeReader { pipe },
-            )
+            let writer = PipeWriter {
+                pipe: Arc::clone(&pipe),
+            };
+            let reader = PipeReader { pipe };
+            (writer, reader)
         }
     }
 
