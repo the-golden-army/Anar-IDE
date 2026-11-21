@@ -382,8 +382,8 @@ mod tests {
         let prefs_state = PreferencesState::load(base.join(PREFERENCES_FILE_NAME));
         let ws_state = WorkspaceState::default();
 
-        let info =
-            open_workspace_with_optional_emitter(&proj, None, &ws_state, &prefs_state).unwrap();
+        let open_res = open_workspace_with_optional_emitter(&proj, None, &ws_state, &prefs_state);
+        let info = open_res.unwrap();
         assert!(info.is_cargo_project);
         assert_eq!(info.name, "sample-crate");
 

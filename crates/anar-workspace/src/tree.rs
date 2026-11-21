@@ -35,9 +35,7 @@ pub fn is_ignored_dir_name(name: &str) -> bool {
 
 /// Returns `true` if a workspace-relative path passes through an ignored directory.
 pub fn is_ignored_relative_path(rel_path: &str) -> bool {
-    rel_path
-        .split(['/', '\\'])
-        .any(|segment| is_ignored_dir_name(segment))
+    rel_path.split(['/', '\\']).any(is_ignored_dir_name)
 }
 
 /// Opens a workspace directory and returns its metadata and root directory listing.

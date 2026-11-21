@@ -52,18 +52,18 @@ impl WorkspaceWatcher {
         let watcher_res = notify::recommended_watcher(move |res| {
             let _ = raw_tx.send(res);
         });
-        let mut watcher = watcher_res.map_err(|err| {
-            WorkspaceError::Watcher(format!("failed to initialize watcher: {err}"))
-        })?;
+        let mut watcher = match watcher_res {
+            Ok(w) => w,
+            Err(err) => {
+                let msg = format!("failed to initialize watcher: {err}");
+                return Err(WorkspaceError::Watcher(msg));
+            }
+        };
 
-        watcher
-            .watch(scope.root(), RecursiveMode::Recursive)
-            .map_err(|err| {
-                WorkspaceError::Watcher(format!(
-                    "failed to watch '{}': {err}",
-                    scope.root().display()
-                ))
-            })?;
+        if let Err(err) = watcher.watch(scope.root(), RecursiveMode::Recursive) {
+            let msg = format!("failed to watch '{}': {err}", scope.root().display());
+            return Err(WorkspaceError::Watcher(msg));
+        }
 
         let worker = thread::spawn(move || {
             let mut pending: BTreeMap<String, WorkspaceFsEventKind> = BTreeMap::new();
@@ -166,9 +166,10 @@ fn normalize_event_path(root: &Path, path: &Path) -> Option<String> {
 }
 
 fn is_temp_save_file(rel: &str) -> bool {
-    rel.rsplit('/').next().is_some_and(|name| {
-        name.contains(".anar-tmp-") || name.ends_with(".swp") || name.ends_with('~')
-    })
+    let Some(name) = rel.rsplit('/').next() else {
+        return false;
+    };
+    name.contains(".anar-tmp-") || name.ends_with(".swp") || name.ends_with('~')
 }
 
 fn is_suppressed(self_saves: &Arc<Mutex<HashMap<String, Instant>>>, rel: &str) -> bool {

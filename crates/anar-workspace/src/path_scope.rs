@@ -11,17 +11,16 @@ pub struct WorkspaceScope {
 impl WorkspaceScope {
     /// Opens and canonicalizes `root_dir`, ensuring it is an existing directory.
     pub fn open(root_dir: &Path) -> Result<Self> {
-        let canonical = fs::canonicalize(root_dir).map_err(|err| {
-            WorkspaceError::NotFound(format!(
-                "cannot open workspace '{}': {err}",
-                root_dir.display()
-            ))
-        })?;
+        let canonical = match fs::canonicalize(root_dir) {
+            Ok(path) => path,
+            Err(err) => {
+                let msg = format!("cannot open workspace '{}': {err}", root_dir.display());
+                return Err(WorkspaceError::NotFound(msg));
+            }
+        };
         if !canonical.is_dir() {
-            return Err(WorkspaceError::NotDirectory(format!(
-                "workspace path '{}' is not a directory",
-                canonical.display()
-            )));
+            let msg = format!("workspace path '{}' is not a directory", canonical.display());
+            return Err(WorkspaceError::NotDirectory(msg));
         }
         Ok(Self { root: canonical })
     }
@@ -43,17 +42,16 @@ impl WorkspaceScope {
     /// Resolves an existing path inside the workspace, blocking `..` and symlink escapes.
     pub fn resolve_existing(&self, rel_or_abs: &Path) -> Result<PathBuf> {
         let candidate = self.normalize_candidate(rel_or_abs)?;
-        let canonical = fs::canonicalize(&candidate).map_err(|err| {
-            WorkspaceError::NotFound(format!(
-                "path '{}' does not exist: {err}",
-                rel_or_abs.display()
-            ))
-        })?;
+        let canonical = match fs::canonicalize(&candidate) {
+            Ok(path) => path,
+            Err(err) => {
+                let msg = format!("path '{}' does not exist: {err}", rel_or_abs.display());
+                return Err(WorkspaceError::NotFound(msg));
+            }
+        };
         if !canonical.starts_with(&self.root) {
-            return Err(WorkspaceError::PathEscape(format!(
-                "path '{}' escapes the workspace root",
-                rel_or_abs.display()
-            )));
+            let msg = format!("path '{}' escapes the workspace root", rel_or_abs.display());
+            return Err(WorkspaceError::PathEscape(msg));
         }
         Ok(canonical)
     }
@@ -74,26 +72,24 @@ impl WorkspaceScope {
         let mut suffix_parts = Vec::new();
         while !ancestor.exists() {
             let Some(name) = ancestor.file_name() else {
-                return Err(WorkspaceError::PathEscape(format!(
+                let msg = format!(
                     "path '{}' has no valid ancestor inside workspace",
                     rel_or_abs.display()
-                )));
+                );
+                return Err(WorkspaceError::PathEscape(msg));
             };
             suffix_parts.push(name.to_os_string());
-            ancestor = ancestor.parent().ok_or_else(|| {
-                WorkspaceError::PathEscape(format!(
-                    "path '{}' escapes the workspace root",
-                    rel_or_abs.display()
-                ))
-            })?;
+            let Some(parent) = ancestor.parent() else {
+                let msg = format!("path '{}' escapes the workspace root", rel_or_abs.display());
+                return Err(WorkspaceError::PathEscape(msg));
+            };
+            ancestor = parent;
         }
 
         let canonical_ancestor = fs::canonicalize(ancestor)?;
         if !canonical_ancestor.starts_with(&self.root) {
-            return Err(WorkspaceError::PathEscape(format!(
-                "path '{}' escapes the workspace root",
-                rel_or_abs.display()
-            )));
+            let msg = format!("path '{}' escapes the workspace root", rel_or_abs.display());
+            return Err(WorkspaceError::PathEscape(msg));
         }
 
         let mut resolved = canonical_ancestor;
@@ -119,10 +115,8 @@ impl WorkspaceScope {
     fn normalize_candidate(&self, rel_or_abs: &Path) -> Result<PathBuf> {
         if rel_or_abs.is_absolute() {
             if !rel_or_abs.starts_with(&self.root) {
-                return Err(WorkspaceError::PathEscape(format!(
-                    "absolute path '{}' is outside workspace",
-                    rel_or_abs.display()
-                )));
+                let msg = format!("absolute path '{}' is outside workspace", rel_or_abs.display());
+                return Err(WorkspaceError::PathEscape(msg));
             }
             let rel = rel_or_abs
                 .strip_prefix(&self.root)
@@ -145,18 +139,17 @@ impl WorkspaceScope {
                 Component::ParentDir => {
                     depth -= 1;
                     if depth < 0 {
-                        return Err(WorkspaceError::PathEscape(format!(
+                        let msg = format!(
                             "relative path '{}' traverses above workspace root",
                             rel.display()
-                        )));
+                        );
+                        return Err(WorkspaceError::PathEscape(msg));
                     }
                     out.pop();
                 }
                 Component::RootDir | Component::Prefix(_) => {
-                    return Err(WorkspaceError::PathEscape(format!(
-                        "unexpected root component in '{}'",
-                        rel.display()
-                    )));
+                    let msg = format!("unexpected root component in '{}'", rel.display());
+                    return Err(WorkspaceError::PathEscape(msg));
                 }
             }
         }

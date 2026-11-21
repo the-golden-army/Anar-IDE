@@ -137,10 +137,8 @@ impl AppPreferences {
             if entry.path.trim().is_empty() {
                 continue;
             }
-            if !deduped
-                .iter()
-                .any(|existing: &RecentWorkspace| existing.path == entry.path)
-            {
+            let seen = deduped.iter().any(|existing| existing.path == entry.path);
+            if !seen {
                 deduped.push(entry);
             }
             if deduped.len() == MAX_RECENT_WORKSPACES {

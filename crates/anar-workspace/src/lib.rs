@@ -185,12 +185,8 @@ mod tests {
         // Give OS watcher a moment to arm, then trigger self-save and external edit.
         std::thread::sleep(Duration::from_millis(250));
         watcher.record_self_save("Cargo.toml");
-        save_document(
-            &scope,
-            Path::new("Cargo.toml"),
-            "[package]\nname = \"demo\"\nversion = \"0.1.1\"\n",
-        )
-        .unwrap();
+        let next_toml = "[package]\nname = \"demo\"\nversion = \"0.1.1\"\n";
+        save_document(&scope, Path::new("Cargo.toml"), next_toml).unwrap();
 
         fs::write(dir.join("src/main.rs"), "fn main() { println!(\"external\"); }\n").unwrap();
 

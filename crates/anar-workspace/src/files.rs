@@ -61,36 +61,32 @@ pub fn read_document(scope: &WorkspaceScope, rel_path: &Path) -> Result<Document
     let resolved = scope.resolve_existing(rel_path)?;
     let meta = fs::metadata(&resolved)?;
     if !meta.is_file() {
-        return Err(WorkspaceError::NotFile(format!(
-            "'{}' is not a regular file",
-            rel_path.display()
-        )));
+        let msg = format!("'{}' is not a regular file", rel_path.display());
+        return Err(WorkspaceError::NotFile(msg));
     }
 
     let size_bytes = meta.len();
     if size_bytes > MAX_FILE_SIZE_BYTES {
-        return Err(WorkspaceError::TooLarge(format!(
-            "file '{}' is {} bytes, exceeding the {} byte editor limit",
-            rel_path.display(),
-            size_bytes,
-            MAX_FILE_SIZE_BYTES
-        )));
+        let msg = format!(
+            "file '{}' is {size_bytes} bytes, exceeding the {MAX_FILE_SIZE_BYTES} byte limit",
+            rel_path.display()
+        );
+        return Err(WorkspaceError::TooLarge(msg));
     }
 
     let bytes = fs::read(&resolved)?;
     if bytes.contains(&0) {
-        return Err(WorkspaceError::BinaryOrInvalidUtf8(format!(
-            "file '{}' appears to be binary",
-            rel_path.display()
-        )));
+        let msg = format!("file '{}' appears to be binary", rel_path.display());
+        return Err(WorkspaceError::BinaryOrInvalidUtf8(msg));
     }
 
-    let content = String::from_utf8(bytes).map_err(|_| {
-        WorkspaceError::BinaryOrInvalidUtf8(format!(
-            "file '{}' is not valid UTF-8 text",
-            rel_path.display()
-        ))
-    })?;
+    let content = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => {
+            let msg = format!("file '{}' is not valid UTF-8 text", rel_path.display());
+            return Err(WorkspaceError::BinaryOrInvalidUtf8(msg));
+        }
+    };
 
     let relative_path = scope
         .to_relative_string(&resolved)
@@ -124,10 +120,8 @@ pub fn save_document(scope: &WorkspaceScope, rel_path: &Path, content: &str) -> 
     if let Err(rename_err) = fs::rename(&tmp_path, &resolved) {
         if fs::write(&resolved, content.as_bytes()).is_err() {
             let _ = fs::remove_file(&tmp_path);
-            return Err(WorkspaceError::Io(format!(
-                "failed to save '{}': {rename_err}",
-                rel_path.display()
-            )));
+            let msg = format!("failed to save '{}': {rename_err}", rel_path.display());
+            return Err(WorkspaceError::Io(msg));
         }
         let _ = fs::remove_file(&tmp_path);
     }
@@ -148,10 +142,8 @@ pub fn save_document(scope: &WorkspaceScope, rel_path: &Path, content: &str) -> 
 pub fn create_file(scope: &WorkspaceScope, rel_path: &Path) -> Result<String> {
     let resolved = scope.resolve_for_write(rel_path)?;
     if resolved.exists() {
-        return Err(WorkspaceError::AlreadyExists(format!(
-            "'{}' already exists",
-            rel_path.display()
-        )));
+        let msg = format!("'{}' already exists", rel_path.display());
+        return Err(WorkspaceError::AlreadyExists(msg));
     }
     if let Some(parent) = resolved.parent() {
         fs::create_dir_all(parent)?;
@@ -167,15 +159,14 @@ pub fn create_file(scope: &WorkspaceScope, rel_path: &Path) -> Result<String> {
 pub fn create_directory(scope: &WorkspaceScope, rel_path: &Path) -> Result<String> {
     let resolved = scope.resolve_for_write(rel_path)?;
     if resolved.exists() {
-        return Err(WorkspaceError::AlreadyExists(format!(
-            "'{}' already exists",
-            rel_path.display()
-        )));
+        let msg = format!("'{}' already exists", rel_path.display());
+        return Err(WorkspaceError::AlreadyExists(msg));
     }
     fs::create_dir_all(&resolved)?;
-    Ok(scope
+    let relative = scope
         .to_relative_string(&resolved)
-        .unwrap_or_else(|| rel_path.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
+    Ok(relative)
 }
 
 /// Renames or moves a file/directory within `scope`.
@@ -183,10 +174,8 @@ pub fn rename_entry(scope: &WorkspaceScope, from: &Path, to: &Path) -> Result<St
     let src = scope.resolve_existing(from)?;
     let dst = scope.resolve_for_write(to)?;
     if dst.exists() {
-        return Err(WorkspaceError::AlreadyExists(format!(
-            "'{}' already exists",
-            to.display()
-        )));
+        let msg = format!("'{}' already exists", to.display());
+        return Err(WorkspaceError::AlreadyExists(msg));
     }
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
