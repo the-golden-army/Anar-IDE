@@ -833,7 +833,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('file-tree')).toBeInTheDocument();
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -886,6 +886,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -958,6 +959,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -1053,6 +1055,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     // Open workspace first.
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
     });
 
@@ -1115,6 +1118,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     // Open workspace and open src/main.rs.
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
     });
 
@@ -1249,6 +1253,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByTestId('statusbar')).toHaveAttribute('data-backend', 'cargo');
     });
 
@@ -1300,7 +1305,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
-      expect(screen.getByTestId('file-tree')).toBeInTheDocument();
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
     });
 
     // Search across workspace and click match to jump to src/lib.rs.
