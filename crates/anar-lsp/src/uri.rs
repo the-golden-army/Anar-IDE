@@ -152,7 +152,8 @@ mod tests {
 
     #[test]
     fn parses_encoded_windows_drive_uri() {
-        let parsed = file_uri_to_path("file:///c%3A/Users/dev/anar/src/lib.rs").unwrap();
+        let uri = "file:///c%3A/Users/dev/anar/src/lib.rs";
+        let parsed = file_uri_to_path(uri).unwrap();
         assert_eq!(parsed, PathBuf::from("c:/Users/dev/anar/src/lib.rs"));
     }
 

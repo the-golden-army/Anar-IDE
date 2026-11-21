@@ -404,7 +404,9 @@ fn lsp_did_open(
     lsp_state: tauri::State<'_, LspState>,
 ) -> Result<(), String> {
     let scope = ws_state.scope()?;
-    let _ = scope.resolve_existing(Path::new(&rel_path)).map_err(|e| e.to_string())?;
+    if let Err(err) = scope.resolve_existing(Path::new(&rel_path)) {
+        return Err(err.to_string());
+    }
     lsp_state.0.did_open(&rel_path, &language_id, &content)
 }
 
@@ -416,7 +418,9 @@ fn lsp_did_change(
     lsp_state: tauri::State<'_, LspState>,
 ) -> Result<(), String> {
     let scope = ws_state.scope()?;
-    let _ = scope.resolve_existing(Path::new(&rel_path)).map_err(|e| e.to_string())?;
+    if let Err(err) = scope.resolve_existing(Path::new(&rel_path)) {
+        return Err(err.to_string());
+    }
     lsp_state.0.did_change(&rel_path, &content)
 }
 
@@ -427,7 +431,9 @@ fn lsp_did_save(
     lsp_state: tauri::State<'_, LspState>,
 ) -> Result<(), String> {
     let scope = ws_state.scope()?;
-    let _ = scope.resolve_existing(Path::new(&rel_path)).map_err(|e| e.to_string())?;
+    if let Err(err) = scope.resolve_existing(Path::new(&rel_path)) {
+        return Err(err.to_string());
+    }
     lsp_state.0.did_save(&rel_path)
 }
 

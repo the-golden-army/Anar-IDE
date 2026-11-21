@@ -79,13 +79,13 @@ impl LspManager {
 
     /// Returns the latest known LSP lifecycle state.
     pub fn current_status(&self) -> LspStatusEvent {
-        self.status
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or(LspStatusEvent {
-                status: LspStatus::Stopped,
-                detail: None,
-            })
+        if let Ok(guard) = self.status.lock() {
+            return guard.clone();
+        }
+        LspStatusEvent {
+            status: LspStatus::Stopped,
+            detail: None,
+        }
     }
 
     /// Starts (or restarts) `rust-analyzer` for `workspace_root`.
@@ -119,13 +119,11 @@ impl LspManager {
 
     /// Restarts `rust-analyzer` for the last configured workspace, if any.
     pub fn restart(self: &Arc<Self>) -> Result<(), String> {
-        let saved = {
-            let guard = self
-                .callbacks
-                .lock()
-                .map_err(|_| "LSP state lock poisoned".to_string())?;
-            guard.clone()
+        let Ok(guard) = self.callbacks.lock() else {
+            return Err("LSP state lock poisoned".to_string());
         };
+        let saved = guard.clone();
+        drop(guard);
         let Some((root, status_cb, diag_cb)) = saved else {
             return Err("No workspace is currently open for rust-analyzer".to_string());
         };
@@ -202,11 +200,10 @@ impl LspManager {
         self.emit_status(&status_cb, LspStatus::Starting, None);
 
         let mut command = Command::new(&binary);
-        command
-            .current_dir(workspace_root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        command.current_dir(workspace_root);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
 
         let mut child = match command.spawn() {
             Ok(child) => child,
@@ -217,14 +214,12 @@ impl LspManager {
             }
         };
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| "failed to capture rust-analyzer stdin".to_string())?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "failed to capture rust-analyzer stdout".to_string())?;
+        let Some(stdin) = child.stdin.take() else {
+            return Err("failed to capture rust-analyzer stdin".to_string());
+        };
+        let Some(stdout) = child.stdout.take() else {
+            return Err("failed to capture rust-analyzer stdout".to_string());
+        };
         if let Some(stderr) = child.stderr.take() {
             // Drain stderr so rust-analyzer never blocks on a full OS pipe buffer.
             thread::spawn(move || {
@@ -266,10 +261,9 @@ impl LspManager {
         let child_arc = Arc::new(Mutex::new(child));
 
         {
-            let mut active = self
-                .active
-                .lock()
-                .map_err(|_| "LSP active lock poisoned".to_string())?;
+            let Ok(mut active) = self.active.lock() else {
+                return Err("LSP active lock poisoned".to_string());
+            };
             *active = Some(ActiveSession {
                 session_id,
                 workspace_root: workspace_root.to_path_buf(),
@@ -327,11 +321,10 @@ impl LspManager {
                 return;
             }
 
-            let still_current = manager
-                .active
-                .lock()
-                .map(|g| g.as_ref().is_some_and(|s| s.session_id == session_id))
-                .unwrap_or(false);
+            let still_current = match manager.active.lock() {
+                Ok(g) => g.as_ref().is_some_and(|s| s.session_id == session_id),
+                Err(_) => false,
+            };
             if !still_current {
                 return;
             }
@@ -447,11 +440,8 @@ impl LspManager {
                 let waiter = pending.lock().ok().and_then(|mut map| map.remove(&num_id));
                 if let Some(tx) = waiter {
                     if let Some(err) = msg.get("error") {
-                        let err_msg = err
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("LSP request failed")
-                            .to_string();
+                        let msg_val = err.get("message").and_then(Value::as_str);
+                        let err_msg = msg_val.unwrap_or("LSP request failed").to_string();
                         let _ = tx.send(Err(err_msg));
                     } else {
                         let result = msg.get("result").cloned().unwrap_or(Value::Null);
@@ -462,11 +452,8 @@ impl LspManager {
             // Server-to-client request: reply immediately so rust-analyzer never stalls.
             (Some(req_method), Some(req_id)) => {
                 let result = if req_method == "workspace/configuration" {
-                    let count = msg
-                        .get("params")
-                        .and_then(|p| p.get("items"))
-                        .and_then(Value::as_array)
-                        .map_or(0, Vec::len);
+                    let items = msg.get("params").and_then(|p| p.get("items"));
+                    let count = items.and_then(Value::as_array).map_or(0, Vec::len);
                     Value::Array(vec![Value::Null; count])
                 } else {
                     Value::Null
@@ -496,11 +483,10 @@ impl LspManager {
     }
 
     fn replay_open_documents(&self) {
-        let docs: Vec<(String, OpenDocument)> = self
-            .open_docs
-            .lock()
-            .map(|g| g.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default();
+        let docs: Vec<(String, OpenDocument)> = match self.open_docs.lock() {
+            Ok(g) => g.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            Err(_) => Vec::new(),
+        };
         for (rel_path, doc) in docs {
             if let Some(uri) = self.uri_for_relative(&rel_path) {
                 let _ = self.send_notification(
@@ -561,13 +547,12 @@ impl LspManager {
             let Ok(mut docs) = self.open_docs.lock() else {
                 return Ok(());
             };
-            let entry = docs
-                .entry(relative_path.to_string())
-                .or_insert_with(|| OpenDocument {
-                    language_id: "rust".to_string(),
-                    text: String::new(),
-                    version: 0,
-                });
+            let key = relative_path.to_string();
+            let entry = docs.entry(key).or_insert_with(|| OpenDocument {
+                language_id: "rust".to_string(),
+                text: String::new(),
+                version: 0,
+            });
             entry.version += 1;
             entry.text = text.to_string();
             entry.version
@@ -720,9 +705,10 @@ impl LspManager {
             "method": method,
             "params": params
         });
-        writer_tx
-            .send(payload)
-            .map_err(|_| "rust-analyzer writer channel closed".to_string())
+        if writer_tx.send(payload).is_err() {
+            return Err("rust-analyzer writer channel closed".to_string());
+        }
+        Ok(())
     }
 
     fn send_request_with_timeout(
@@ -732,10 +718,9 @@ impl LspManager {
         timeout: Duration,
     ) -> Result<Value, String> {
         let (writer_tx, pending) = {
-            let guard = self
-                .active
-                .lock()
-                .map_err(|_| "LSP active lock poisoned".to_string())?;
+            let Ok(guard) = self.active.lock() else {
+                return Err("LSP active lock poisoned".to_string());
+            };
             let Some(session) = guard.as_ref() else {
                 return Err("rust-analyzer is not running".to_string());
             };
@@ -745,7 +730,9 @@ impl LspManager {
         let id = self.next_id();
         let (tx, rx) = mpsc::channel();
         {
-            let mut map = pending.lock().map_err(|_| "LSP pending lock poisoned".to_string())?;
+            let Ok(mut map) = pending.lock() else {
+                return Err("LSP pending lock poisoned".to_string());
+            };
             map.insert(id, tx);
         }
 

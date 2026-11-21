@@ -91,14 +91,20 @@ pub struct LspTextEdit {
 
 /// Serializes one JSON-RPC 2.0 message with `Content-Length` framing.
 pub fn write_lsp_message<W: Write>(writer: &mut W, payload: &Value) -> Result<(), String> {
-    let body = serde_json::to_vec(payload)
-        .map_err(|err| format!("failed to serialize LSP message: {err}"))?;
+    let body = match serde_json::to_vec(payload) {
+        Ok(bytes) => bytes,
+        Err(err) => return Err(format!("failed to serialize LSP message: {err}")),
+    };
     let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    if let Err(err) = writer.write_all(header.as_bytes()) {
+        return Err(format!("failed to write LSP header: {err}"));
+    }
+    if let Err(err) = writer.write_all(&body) {
+        return Err(format!("failed to write LSP body: {err}"));
+    }
     writer
-        .write_all(header.as_bytes())
-        .and_then(|()| writer.write_all(&body))
-        .and_then(|()| writer.flush())
-        .map_err(|err| format!("failed to write LSP message: {err}"))
+        .flush()
+        .map_err(|err| format!("failed to flush LSP writer: {err}"))
 }
 
 /// Reads one `Content-Length` framed JSON-RPC 2.0 message, returning `None` at clean EOF.
@@ -108,9 +114,10 @@ pub fn read_lsp_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>, Str
 
     loop {
         line.clear();
-        let read = reader
-            .read_line(&mut line)
-            .map_err(|err| format!("failed to read LSP header: {err}"))?;
+        let read = match reader.read_line(&mut line) {
+            Ok(n) => n,
+            Err(err) => return Err(format!("failed to read LSP header: {err}")),
+        };
         if read == 0 {
             if content_length.is_none() {
                 return Ok(None);
@@ -128,10 +135,10 @@ pub fn read_lsp_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>, Str
 
         if let Some((name, value)) = trimmed.split_once(':') {
             if name.trim().eq_ignore_ascii_case("content-length") {
-                let len = value
-                    .trim()
-                    .parse::<usize>()
-                    .map_err(|err| format!("invalid Content-Length header: {err}"))?;
+                let len = match value.trim().parse::<usize>() {
+                    Ok(n) => n,
+                    Err(err) => return Err(format!("invalid Content-Length header: {err}")),
+                };
                 content_length = Some(len);
             }
         }
@@ -141,13 +148,14 @@ pub fn read_lsp_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>, Str
         return Err("missing Content-Length header in LSP frame".to_string());
     };
     let mut body = vec![0u8; length];
-    reader
-        .read_exact(&mut body)
-        .map_err(|err| format!("failed to read LSP payload ({length} bytes): {err}"))?;
+    if let Err(err) = reader.read_exact(&mut body) {
+        return Err(format!("failed to read LSP payload ({length} bytes): {err}"));
+    }
 
-    let value: Value = serde_json::from_slice(&body)
-        .map_err(|err| format!("invalid JSON in LSP payload: {err}"))?;
-    Ok(Some(value))
+    match serde_json::from_slice(&body) {
+        Ok(value) => Ok(Some(value)),
+        Err(err) => Err(format!("invalid JSON in LSP payload: {err}")),
+    }
 }
 
 /// Parses `textDocument/publishDiagnostics` parameters into workspace-scoped diagnostics.
@@ -171,22 +179,24 @@ pub fn parse_publish_diagnostics(
             _ => DiagnosticSeverity::Help,
         };
         let code = item.get("code").and_then(|c| {
-            c.as_str()
-                .map(ToString::to_string)
-                .or_else(|| c.as_i64().map(|n| n.to_string()))
+            if let Some(s) = c.as_str() {
+                Some(s.to_string())
+            } else {
+                c.as_i64().map(|n| n.to_string())
+            }
         });
-        let primary_span = item
-            .get("range")
-            .and_then(|r| serde_json::from_value::<LspRange>(r.clone()).ok())
-            .map(|range| DiagnosticSpan {
-                file_name: relative_path.clone(),
-                line_start: range.start.line.saturating_add(1),
-                line_end: range.end.line.saturating_add(1),
-                column_start: range.start.character.saturating_add(1),
-                column_end: range.end.character.saturating_add(1),
-                is_primary: true,
-                label: None,
-            });
+        let range_val = item.get("range");
+        let parsed_range =
+            range_val.and_then(|r| serde_json::from_value::<LspRange>(r.clone()).ok());
+        let primary_span = parsed_range.map(|range| DiagnosticSpan {
+            file_name: relative_path.clone(),
+            line_start: range.start.line.saturating_add(1),
+            line_end: range.end.line.saturating_add(1),
+            column_start: range.start.character.saturating_add(1),
+            column_end: range.end.character.saturating_add(1),
+            is_primary: true,
+            label: None,
+        });
         let spans = primary_span.clone().into_iter().collect();
 
         diagnostics.push(DiagnosticItem {
@@ -225,18 +235,18 @@ pub fn parse_completion_response(result: &Value) -> Vec<LspCompletionItem> {
             continue;
         };
         let documentation = item.get("documentation").and_then(|doc| {
-            doc.as_str()
-                .map(ToString::to_string)
-                .or_else(|| str_field(doc, "value"))
+            if let Some(s) = doc.as_str() {
+                Some(s.to_string())
+            } else {
+                str_field(doc, "value")
+            }
         });
+        let kind_u64 = item.get("kind").and_then(Value::as_u64);
         out.push(LspCompletionItem {
             label: label.to_string(),
             detail: str_field(item, "detail"),
             documentation,
-            kind: item
-                .get("kind")
-                .and_then(Value::as_u64)
-                .and_then(|k| u32::try_from(k).ok()),
+            kind: kind_u64.and_then(|k| u32::try_from(k).ok()),
             insert_text: str_field(item, "insertText"),
             sort_text: str_field(item, "sortText"),
         });
@@ -254,9 +264,8 @@ pub fn parse_hover_response(result: &Value) -> Option<LspHoverInfo> {
     if contents.trim().is_empty() {
         return None;
     }
-    let range = result
-        .get("range")
-        .and_then(|r| serde_json::from_value::<LspRange>(r.clone()).ok());
+    let range_val = result.get("range");
+    let range = range_val.and_then(|r| serde_json::from_value::<LspRange>(r.clone()).ok());
     Some(LspHoverInfo { contents, range })
 }
 
@@ -268,11 +277,13 @@ fn extract_hover_contents(value: &Value) -> String {
         return s.to_string();
     }
     if let Some(arr) = value.as_array() {
-        let parts: Vec<String> = arr
-            .iter()
-            .map(extract_hover_contents)
-            .filter(|part| !part.trim().is_empty())
-            .collect();
+        let mut parts = Vec::new();
+        for elem in arr {
+            let text = extract_hover_contents(elem);
+            if !text.trim().is_empty() {
+                parts.push(text);
+            }
+        }
         return parts.join("\n\n");
     }
     String::new()
@@ -295,9 +306,7 @@ pub fn parse_definition_response(result: &Value, workspace_root: &Path) -> Vec<L
         let uri_and_range = if let Some(uri) = entry.get("uri").and_then(Value::as_str) {
             entry.get("range").map(|r| (uri, r))
         } else if let Some(uri) = entry.get("targetUri").and_then(Value::as_str) {
-            let range = entry
-                .get("targetSelectionRange")
-                .or_else(|| entry.get("targetRange"));
+            let range = entry.get("targetSelectionRange").or_else(|| entry.get("targetRange"));
             range.map(|r| (uri, r))
         } else {
             None
@@ -326,9 +335,13 @@ pub fn parse_formatting_response(result: &Value) -> Vec<LspTextEdit> {
     let Some(arr) = result.as_array() else {
         return Vec::new();
     };
-    arr.iter()
-        .filter_map(|v| serde_json::from_value::<LspTextEdit>(v.clone()).ok())
-        .collect()
+    let mut edits = Vec::new();
+    for item in arr {
+        if let Ok(edit) = serde_json::from_value::<LspTextEdit>(item.clone()) {
+            edits.push(edit);
+        }
+    }
+    edits
 }
 
 /// Maps `$/progress` notifications from `rust-analyzer` into `LspStatus` updates.
