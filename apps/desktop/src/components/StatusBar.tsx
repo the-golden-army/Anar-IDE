@@ -7,8 +7,12 @@ interface StatusBarProps {
   statusMessage: string | null;
   themeMode: ThemeMode;
   resolvedTheme: ResolvedTheme;
+  zoomPercent: number;
   isNarrow: boolean;
   onCycleTheme: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
+  onZoomIn: () => void;
 }
 
 export function StatusBar({
@@ -16,8 +20,12 @@ export function StatusBar({
   statusMessage,
   themeMode,
   resolvedTheme,
+  zoomPercent,
   isNarrow,
   onCycleTheme,
+  onZoomOut,
+  onZoomReset,
+  onZoomIn,
 }: StatusBarProps) {
   const themeLabel =
     themeMode === 'system' ? `System (${resolvedTheme})` : themeMode === 'dark' ? 'Dark' : 'Light';
@@ -58,6 +66,41 @@ export function StatusBar({
               </>
             )}
           </>
+        )}
+
+        {!isNarrow && (
+          <div
+            className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[var(--text-secondary)]"
+            aria-label="Zoom controls"
+          >
+            <button
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out (Ctrl/Cmd+-)"
+              onClick={onZoomOut}
+              className="rounded px-1 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              -
+            </button>
+            <button
+              type="button"
+              aria-label="Reset zoom"
+              title="Reset zoom (Ctrl/Cmd+0)"
+              onClick={onZoomReset}
+              className="rounded px-1 font-[family-name:var(--font-mono)] text-[10px] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              {zoomPercent}%
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in (Ctrl/Cmd++)"
+              onClick={onZoomIn}
+              className="rounded px-1 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              +
+            </button>
+          </div>
         )}
 
         <button

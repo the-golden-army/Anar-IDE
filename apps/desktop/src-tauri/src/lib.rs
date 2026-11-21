@@ -289,6 +289,19 @@ fn delete_workspace_entry(
     delete_entry(&scope, Path::new(&rel_path)).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn is_window_fullscreen(window: tauri::WebviewWindow) -> Result<bool, String> {
+    window.is_fullscreen().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn toggle_window_fullscreen(window: tauri::WebviewWindow) -> Result<bool, String> {
+    let current = window.is_fullscreen().map_err(|e| e.to_string())?;
+    let next = !current;
+    window.set_fullscreen(next).map_err(|e| e.to_string())?;
+    Ok(next)
+}
+
 /// Entry point for the Anar desktop application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -316,7 +329,9 @@ pub fn run() {
             create_workspace_file,
             create_workspace_dir,
             rename_workspace_entry,
-            delete_workspace_entry
+            delete_workspace_entry,
+            is_window_fullscreen,
+            toggle_window_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anar");

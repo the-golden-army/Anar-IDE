@@ -18,6 +18,21 @@
                 : 'dark';
           document.documentElement.dataset.theme = resolved;
           document.documentElement.style.colorScheme = resolved;
+          var rawPrefs = localStorage.getItem('anar.preferences');
+          if (rawPrefs) {
+            var parsedPrefs = JSON.parse(rawPrefs);
+            var zoom =
+              parsedPrefs &&
+              parsedPrefs.layout &&
+              typeof parsedPrefs.layout.zoomPercent === 'number'
+                ? Math.min(160, Math.max(70, Math.round(parsedPrefs.layout.zoomPercent)))
+                : 100;
+            document.documentElement.style.fontSize = (16 * zoom) / 100 + 'px';
+            document.documentElement.style.setProperty(
+              '--editor-font-size',
+              Number(((13 * zoom) / 100).toFixed(2)) + 'px',
+            );
+          }
         } catch (_) {}
       })();
     </script>

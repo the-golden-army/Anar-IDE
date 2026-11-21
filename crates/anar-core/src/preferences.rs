@@ -22,6 +22,10 @@ pub const MIN_INSPECTOR_WIDTH: u16 = 200;
 pub const MAX_INSPECTOR_WIDTH: u16 = 480;
 pub const DEFAULT_INSPECTOR_WIDTH: u16 = 280;
 
+pub const MIN_ZOOM_PERCENT: u16 = 70;
+pub const MAX_ZOOM_PERCENT: u16 = 160;
+pub const DEFAULT_ZOOM_PERCENT: u16 = 100;
+
 /// User-selected UI theme mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -72,6 +76,7 @@ pub struct LayoutState {
     pub active_bottom_tab: BottomTab,
     pub inspector_open: bool,
     pub inspector_width: u16,
+    pub zoom_percent: u16,
 }
 
 impl Default for LayoutState {
@@ -85,6 +90,7 @@ impl Default for LayoutState {
             active_bottom_tab: BottomTab::Output,
             inspector_open: false,
             inspector_width: DEFAULT_INSPECTOR_WIDTH,
+            zoom_percent: DEFAULT_ZOOM_PERCENT,
         }
     }
 }
@@ -101,6 +107,7 @@ impl LayoutState {
         self.inspector_width = self
             .inspector_width
             .clamp(MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH);
+        self.zoom_percent = self.zoom_percent.clamp(MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
         self
     }
 }
@@ -219,6 +226,7 @@ mod tests {
             sidebar_width: 10,
             bottom_panel_height: 9_999,
             inspector_width: 5,
+            zoom_percent: 400,
             ..LayoutState::default()
         }
         .sanitized();
@@ -226,6 +234,7 @@ mod tests {
         assert_eq!(layout.sidebar_width, MIN_SIDEBAR_WIDTH);
         assert_eq!(layout.bottom_panel_height, MAX_BOTTOM_HEIGHT);
         assert_eq!(layout.inspector_width, MIN_INSPECTOR_WIDTH);
+        assert_eq!(layout.zoom_percent, MAX_ZOOM_PERCENT);
     }
 
     #[test]
@@ -255,6 +264,7 @@ mod tests {
                 active_bottom_tab: BottomTab::Problems,
                 inspector_open: true,
                 inspector_width: 300,
+                zoom_percent: 120,
             },
             recent_workspaces: Vec::new(),
         };
@@ -292,6 +302,7 @@ mod tests {
         assert_eq!(loaded.theme, ThemeMode::Dark);
         assert!(loaded.layout.sidebar_open);
         assert_eq!(loaded.layout.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
+        assert_eq!(loaded.layout.zoom_percent, DEFAULT_ZOOM_PERCENT);
         assert!(loaded.recent_workspaces.is_empty());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());

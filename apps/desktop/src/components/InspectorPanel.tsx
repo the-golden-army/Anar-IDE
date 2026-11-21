@@ -1,5 +1,5 @@
 import { Cpu, Layers, Zap, X } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { LAYOUT_LIMITS } from '../types/preferences';
 
 interface InspectorPanelProps {
@@ -13,6 +13,7 @@ interface InspectorPanelProps {
 export function InspectorPanel({ open, width, isCompact, onClose, onResize }: InspectorPanelProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
+  const [isResizing, setIsResizing] = useState(false);
 
   if (!open) {
     return null;
@@ -22,6 +23,11 @@ export function InspectorPanel({ open, width, isCompact, onClose, onResize }: In
     event.preventDefault();
     startXRef.current = event.clientX;
     startWidthRef.current = width;
+    setIsResizing(true);
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
 
     const onMove = (moveEvent: PointerEvent) => {
       const delta = startXRef.current - moveEvent.clientX;
@@ -33,6 +39,9 @@ export function InspectorPanel({ open, width, isCompact, onClose, onResize }: In
     };
 
     const onUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
@@ -56,8 +65,14 @@ export function InspectorPanel({ open, width, isCompact, onClose, onResize }: In
           aria-orientation="vertical"
           aria-label="Resize inspector panel"
           onPointerDown={handlePointerDown}
-          className="absolute top-0 bottom-0 left-0 w-1 cursor-col-resize transition-colors hover:bg-[var(--accent)]"
-        />
+          className="group absolute top-0 bottom-0 -left-1 z-10 flex w-2 cursor-col-resize touch-none justify-center"
+        >
+          <span
+            className={`h-full w-0.5 transition-colors duration-150 ${
+              isResizing ? 'bg-[var(--accent)]' : 'bg-transparent group-hover:bg-[var(--accent)]'
+            }`}
+          />
+        </div>
       )}
 
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">

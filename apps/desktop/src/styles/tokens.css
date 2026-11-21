@@ -9,9 +9,10 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  --titlebar-height: 40px;
-  --statusbar-height: 24px;
-  --rail-width: 44px;
+  --titlebar-height: 2.5rem;
+  --statusbar-height: 1.5rem;
+  --rail-width: 2.75rem;
+  --editor-font-size: 13px;
 }
 
 :root,

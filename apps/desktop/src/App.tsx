@@ -27,7 +27,8 @@ import {
   renameWorkspaceEntry,
   saveWorkspaceFile,
 } from './services/workspaceClient';
-import type { BottomTab, SidebarTab } from './types/preferences';
+import { getFullscreenState, toggleFullscreen } from './services/windowClient';
+import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
 import type { EditorTab, FileEntry, WorkspaceFsEvent, WorkspaceInfo } from './types/workspace';
 
 function formatError(err: unknown): string {
@@ -55,6 +56,7 @@ export function App() {
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const initialContentsRef = useRef<Map<string, string>>(new Map());
@@ -442,14 +444,101 @@ export function App() {
     updateLayout((prev) => ({ ...prev, bottomPanelOpen: true, activeBottomTab: tab }));
   };
 
+  const adjustZoom = useCallback(
+    (delta: number) => {
+      updateLayout((prev) => {
+        const nextZoom = Math.min(
+          LAYOUT_LIMITS.maxZoomPercent,
+          Math.max(LAYOUT_LIMITS.minZoomPercent, prev.zoomPercent + delta),
+        );
+        showTransientStatus(`Zoom ${nextZoom}%`);
+        return { ...prev, zoomPercent: nextZoom };
+      });
+    },
+    [showTransientStatus, updateLayout],
+  );
+
+  const resetZoom = useCallback(() => {
+    updateLayout((prev) => ({ ...prev, zoomPercent: LAYOUT_LIMITS.defaultZoomPercent }));
+    showTransientStatus(`Zoom ${LAYOUT_LIMITS.defaultZoomPercent}%`);
+  }, [showTransientStatus, updateLayout]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      const next = await toggleFullscreen();
+      setIsFullscreen(next);
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const syncFullscreen = () => {
+      void getFullscreenState().then((value) => {
+        if (active) {
+          setIsFullscreen((prev) => (prev === value ? prev : value));
+        }
+      });
+    };
+    syncFullscreen();
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    window.addEventListener('resize', syncFullscreen);
+    return () => {
+      active = false;
+      document.removeEventListener('fullscreenchange', syncFullscreen);
+      window.removeEventListener('resize', syncFullscreen);
+    };
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'F11' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        void handleToggleFullscreen();
+        return;
+      }
+
       const mod = event.ctrlKey || event.metaKey;
       if (!mod) {
         return;
       }
       const key = event.key.toLowerCase();
-      if (key === 'o' && !event.shiftKey && !event.altKey) {
+      if (
+        (event.key === '+' ||
+          event.key === '=' ||
+          event.code === 'Equal' ||
+          event.code === 'NumpadAdd') &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        adjustZoom(LAYOUT_LIMITS.zoomStep);
+      } else if (
+        (event.key === '-' ||
+          event.key === '_' ||
+          event.code === 'Minus' ||
+          event.code === 'NumpadSubtract') &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        adjustZoom(-LAYOUT_LIMITS.zoomStep);
+      } else if (
+        (event.key === '0' || event.code === 'Digit0' || event.code === 'Numpad0') &&
+        !event.shiftKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        resetZoom();
+      } else if (
+        key === 'f' &&
+        event.metaKey &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        void handleToggleFullscreen();
+      } else if (key === 'o' && !event.shiftKey && !event.altKey) {
         event.preventDefault();
         void handleOpenFolder();
       } else if (key === 's' && !event.shiftKey && !event.altKey) {
@@ -474,7 +563,16 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeTabPath, handleCloseTab, handleOpenFolder, handleSaveTab, updateLayout]);
+  }, [
+    activeTabPath,
+    adjustZoom,
+    handleCloseTab,
+    handleOpenFolder,
+    handleSaveTab,
+    handleToggleFullscreen,
+    resetZoom,
+    updateLayout,
+  ]);
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.relativePath === activeTabPath) ?? null,
@@ -502,6 +600,7 @@ export function App() {
         sidebarOpen={layout.sidebarOpen}
         bottomPanelOpen={layout.bottomPanelOpen}
         inspectorOpen={layout.inspectorOpen}
+        isFullscreen={isFullscreen}
         isNarrow={isNarrow}
         onOpenFolder={() => void handleOpenFolder()}
         onSaveActive={() => void handleSaveTab(activeTabPath)}
@@ -510,6 +609,7 @@ export function App() {
         onToggleSidebar={toggleSidebar}
         onToggleBottomPanel={toggleBottomPanel}
         onToggleInspector={toggleInspector}
+        onToggleFullscreen={() => void handleToggleFullscreen()}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -660,8 +760,12 @@ export function App() {
         statusMessage={statusMessage}
         themeMode={preferences.theme}
         resolvedTheme={resolvedTheme}
+        zoomPercent={layout.zoomPercent}
         isNarrow={isNarrow}
         onCycleTheme={cycleThemeMode}
+        onZoomOut={() => adjustZoom(-LAYOUT_LIMITS.zoomStep)}
+        onZoomReset={resetZoom}
+        onZoomIn={() => adjustZoom(LAYOUT_LIMITS.zoomStep)}
       />
     </div>
   );

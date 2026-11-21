@@ -10,7 +10,7 @@ const baseTheme = EditorView.theme({
     backgroundColor: 'var(--bg-app)',
     color: 'var(--text-primary)',
     fontFamily: 'var(--font-mono)',
-    fontSize: '13px',
+    fontSize: 'var(--editor-font-size, 13px)',
   },
   '.cm-scroller': {
     overflow: 'auto',

@@ -45,6 +45,7 @@ mod tests {
             active_bottom_tab: BottomTab::Terminal,
             inspector_open: true,
             inspector_width: 260,
+            zoom_percent: 110,
         };
         state.set_layout(layout.clone()).unwrap();
 
