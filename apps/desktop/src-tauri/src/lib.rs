@@ -18,10 +18,10 @@ use anar_runner::{
 use anar_workspace::{
     create_directory, create_file, delete_entry, find_workspace_files as find_files_in_scope,
     git_diff as workspace_git_diff, git_stage_file as workspace_git_stage,
-    git_status as workspace_git_status, git_unstage_file as workspace_git_unstage,
-    list_directory, open_workspace, read_document, rename_entry, save_document,
-    search_workspace_text, DocumentContent, FileEntry, GitDiffResult, GitStatusReport, SaveResult,
-    WorkspaceInfo, WorkspaceScope, WorkspaceSearchResult, WorkspaceWatcher,
+    git_status as workspace_git_status, git_unstage_file as workspace_git_unstage, list_directory,
+    open_workspace, read_document, rename_entry, save_document, search_workspace_text,
+    DocumentContent, FileEntry, GitDiffResult, GitStatusReport, SaveResult, WorkspaceInfo,
+    WorkspaceScope, WorkspaceSearchResult, WorkspaceWatcher,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

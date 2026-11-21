@@ -93,9 +93,13 @@ pub fn search_workspace_text(
                 break;
             }
             let line_num = u32::try_from(idx + 1).unwrap_or(u32::MAX);
-            if let Some((start, end, col)) =
-                find_line_match(raw_line, query, &needle_lower, &needle_ascii, case_sensitive)
-            {
+            if let Some((start, end, col)) = find_line_match(
+                raw_line,
+                query,
+                &needle_lower,
+                &needle_ascii,
+                case_sensitive,
+            ) {
                 matches.push(SearchMatch {
                     line: line_num,
                     col,
