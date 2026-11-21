@@ -2,6 +2,9 @@ use anar_core::preferences::{
     load_preferences, save_preferences, AppPreferences, LayoutState, ThemeMode,
 };
 use anar_core::CompilerBackend;
+use anar_lsp::{
+    LspCompletionItem, LspHoverInfo, LspLocation, LspManager, LspStatusEvent, LspTextEdit,
+};
 use anar_runner::{RunnerAction, RunnerEvent, RunnerManager};
 use anar_workspace::{
     create_directory, create_file, delete_entry, list_directory, open_workspace, read_document,
@@ -15,6 +18,8 @@ use tauri_plugin_dialog::DialogExt;
 
 pub const PREFERENCES_FILE_NAME: &str = "preferences.json";
 const WORKSPACE_FS_EVENT_NAME: &str = "workspace://fs-changed";
+const LSP_STATUS_EVENT_NAME: &str = "lsp://status";
+const LSP_DIAGNOSTICS_EVENT_NAME: &str = "lsp://diagnostics";
 
 /// Thread-safe backend store for persistent UI theme, layout, and recent workspaces.
 pub struct PreferencesState {
@@ -134,9 +139,36 @@ impl WorkspaceState {
 #[derive(Default)]
 pub struct RunnerState(pub Arc<RunnerManager>);
 
+/// Thread-safe backend state for the managed `rust-analyzer` LSP bridge.
+#[derive(Default)]
+pub struct LspState(pub Arc<LspManager>);
+
 /// Returns the default compiler backend configured in `anar-core`.
 pub fn default_backend() -> CompilerBackend {
     CompilerBackend::default()
+}
+
+fn start_lsp_for_workspace(app: &AppHandle, info: &WorkspaceInfo, lsp_state: &LspState) {
+    let manager = Arc::clone(&lsp_state.0);
+    if !info.is_cargo_project {
+        manager.stop();
+        return;
+    }
+
+    let root = PathBuf::from(&info.root_path);
+    let app_for_status = app.clone();
+    let app_for_diags = app.clone();
+    std::thread::spawn(move || {
+        let _ = manager.start(
+            &root,
+            move |status| {
+                let _ = app_for_status.emit(LSP_STATUS_EVENT_NAME, status);
+            },
+            move |diags| {
+                let _ = app_for_diags.emit(LSP_DIAGNOSTICS_EVENT_NAME, diags);
+            },
+        );
+    });
 }
 
 /// Opens a workspace directory, starts a watcher when `app` is provided, and updates recents.
@@ -190,6 +222,7 @@ async fn pick_workspace_folder(
     app: AppHandle,
     ws_state: tauri::State<'_, WorkspaceState>,
     prefs_state: tauri::State<'_, PreferencesState>,
+    lsp_state: tauri::State<'_, LspState>,
 ) -> Result<Option<WorkspaceInfo>, String> {
     let app_for_dialog = app.clone();
     let dialog_handle = tauri::async_runtime::spawn_blocking(move || {
@@ -210,7 +243,9 @@ async fn pick_workspace_folder(
         .into_path()
         .map_err(|err| format!("selected folder is not a local filesystem path: {err}"))?;
 
-    let info = open_workspace_with_optional_emitter(&path, Some(app), &ws_state, &prefs_state)?;
+    let info =
+        open_workspace_with_optional_emitter(&path, Some(app.clone()), &ws_state, &prefs_state)?;
+    start_lsp_for_workspace(&app, &info, &lsp_state);
     Ok(Some(info))
 }
 
@@ -220,8 +255,16 @@ fn open_workspace_folder(
     app: AppHandle,
     ws_state: tauri::State<'_, WorkspaceState>,
     prefs_state: tauri::State<'_, PreferencesState>,
+    lsp_state: tauri::State<'_, LspState>,
 ) -> Result<WorkspaceInfo, String> {
-    open_workspace_with_optional_emitter(Path::new(&path), Some(app), &ws_state, &prefs_state)
+    let info = open_workspace_with_optional_emitter(
+        Path::new(&path),
+        Some(app.clone()),
+        &ws_state,
+        &prefs_state,
+    )?;
+    start_lsp_for_workspace(&app, &info, &lsp_state);
+    Ok(info)
 }
 
 #[tauri::command]
@@ -335,6 +378,116 @@ fn send_run_stdin(
     runner_state.0.write_stdin(&input)
 }
 
+#[tauri::command]
+fn lsp_get_status(lsp_state: tauri::State<'_, LspState>) -> LspStatusEvent {
+    lsp_state.0.current_status()
+}
+
+#[tauri::command]
+async fn lsp_restart(lsp_state: tauri::State<'_, LspState>) -> Result<(), String> {
+    let manager = Arc::clone(&lsp_state.0);
+    tauri::async_runtime::spawn_blocking(move || manager.restart())
+        .await
+        .map_err(|err| format!("LSP restart task failed: {err}"))?
+}
+
+#[tauri::command]
+fn lsp_did_open(
+    rel_path: String,
+    language_id: String,
+    content: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<(), String> {
+    let scope = ws_state.scope()?;
+    let _ = scope
+        .resolve_existing(Path::new(&rel_path))
+        .map_err(|e| e.to_string())?;
+    lsp_state.0.did_open(&rel_path, &language_id, &content)
+}
+
+#[tauri::command]
+fn lsp_did_change(
+    rel_path: String,
+    content: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<(), String> {
+    let scope = ws_state.scope()?;
+    let _ = scope
+        .resolve_existing(Path::new(&rel_path))
+        .map_err(|e| e.to_string())?;
+    lsp_state.0.did_change(&rel_path, &content)
+}
+
+#[tauri::command]
+fn lsp_did_save(
+    rel_path: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<(), String> {
+    let scope = ws_state.scope()?;
+    let _ = scope
+        .resolve_existing(Path::new(&rel_path))
+        .map_err(|e| e.to_string())?;
+    lsp_state.0.did_save(&rel_path)
+}
+
+#[tauri::command]
+fn lsp_did_close(rel_path: String, lsp_state: tauri::State<'_, LspState>) -> Result<(), String> {
+    lsp_state.0.did_close(&rel_path)
+}
+
+#[tauri::command]
+async fn lsp_completion(
+    rel_path: String,
+    line: u32,
+    col: u32,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<Vec<LspCompletionItem>, String> {
+    let manager = Arc::clone(&lsp_state.0);
+    tauri::async_runtime::spawn_blocking(move || manager.completion(&rel_path, line, col))
+        .await
+        .map_err(|err| format!("LSP completion task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn lsp_hover(
+    rel_path: String,
+    line: u32,
+    col: u32,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<Option<LspHoverInfo>, String> {
+    let manager = Arc::clone(&lsp_state.0);
+    tauri::async_runtime::spawn_blocking(move || manager.hover(&rel_path, line, col))
+        .await
+        .map_err(|err| format!("LSP hover task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn lsp_goto_definition(
+    rel_path: String,
+    line: u32,
+    col: u32,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<Vec<LspLocation>, String> {
+    let manager = Arc::clone(&lsp_state.0);
+    tauri::async_runtime::spawn_blocking(move || manager.goto_definition(&rel_path, line, col))
+        .await
+        .map_err(|err| format!("LSP definition task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn lsp_format_document(
+    rel_path: String,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<Vec<LspTextEdit>, String> {
+    let manager = Arc::clone(&lsp_state.0);
+    tauri::async_runtime::spawn_blocking(move || manager.format_document(&rel_path))
+        .await
+        .map_err(|err| format!("LSP format task failed: {err}"))?
+}
+
 /// Entry point for the Anar desktop application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -349,6 +502,7 @@ pub fn run() {
             app.manage(PreferencesState::load(prefs_path));
             app.manage(WorkspaceState::default());
             app.manage(RunnerState::default());
+            app.manage(LspState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -368,7 +522,17 @@ pub fn run() {
             toggle_window_fullscreen,
             start_cargo_run,
             stop_cargo_run,
-            send_run_stdin
+            send_run_stdin,
+            lsp_get_status,
+            lsp_restart,
+            lsp_did_open,
+            lsp_did_change,
+            lsp_did_save,
+            lsp_did_close,
+            lsp_completion,
+            lsp_hover,
+            lsp_goto_definition,
+            lsp_format_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anar");

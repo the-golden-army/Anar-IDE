@@ -10,3 +10,5 @@ authors.workspace = true
 
 [dependencies]
 anar-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

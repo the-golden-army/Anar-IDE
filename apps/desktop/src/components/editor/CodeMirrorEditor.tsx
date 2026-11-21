@@ -1,8 +1,15 @@
+import {
+  autocompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { rust } from '@codemirror/lang-rust';
 import { bracketMatching, foldGutter, indentOnInput } from '@codemirror/language';
+import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState, type Extension, type Text } from '@codemirror/state';
 import {
@@ -10,12 +17,22 @@ import {
   EditorView,
   highlightActiveLine,
   highlightActiveLineGutter,
+  hoverTooltip,
   keymap,
   lineNumbers,
+  type Tooltip,
 } from '@codemirror/view';
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { createCodeMirrorTheme } from './codemirrorTheme';
+import {
+  lspCompletion,
+  lspFormatDocument,
+  lspGotoDefinition,
+  lspHover,
+} from '../../services/lspClient';
+import type { LspCompletionItem, LspLocation, LspPosition, LspTextEdit } from '../../types/lsp';
 import type { ResolvedTheme } from '../../types/preferences';
+import type { DiagnosticItem } from '../../types/runner';
+import { createCodeMirrorTheme } from './codemirrorTheme';
 
 export interface CodeMirrorEditorHandle {
   getDocumentText: (relativePath: string) => string | null;
@@ -23,6 +40,7 @@ export interface CodeMirrorEditorHandle {
   replaceDocumentText: (relativePath: string, content: string, isLargeFile: boolean) => void;
   dropTabBuffer: (relativePath: string) => void;
   revealLocation: (line: number, col: number) => void;
+  formatActiveDocument: () => Promise<boolean>;
   focus: () => void;
 }
 
@@ -31,9 +49,13 @@ interface CodeMirrorEditorProps {
   initialContent: string;
   isLargeFile: boolean;
   resolvedTheme: ResolvedTheme;
+  lspReady: boolean;
+  activeDiagnostics: DiagnosticItem[];
   onDirtyChange: (relativePath: string, dirty: boolean) => void;
   onCursorChange: (relativePath: string, line: number, col: number) => void;
+  onDocumentChange: (relativePath: string, content: string) => void;
   onSaveRequested: () => void;
+  onNavigateLocation: (location: LspLocation) => void;
 }
 
 interface TabBuffer {
@@ -58,6 +80,105 @@ function languageExtensionFor(relativePath: string): Extension {
   return [];
 }
 
+function isRustPath(relativePath: string): boolean {
+  return relativePath.toLowerCase().endsWith('.rs');
+}
+
+function mapCompletionKind(kind: number | null): string | undefined {
+  switch (kind) {
+    case 2:
+    case 3:
+    case 4:
+      return 'function';
+    case 5:
+    case 10:
+      return 'property';
+    case 6:
+      return 'variable';
+    case 7:
+    case 22:
+      return 'class';
+    case 8:
+      return 'interface';
+    case 9:
+      return 'namespace';
+    case 13:
+      return 'enum';
+    case 14:
+      return 'keyword';
+    case 15:
+      return 'macro';
+    case 21:
+      return 'constant';
+    default:
+      return undefined;
+  }
+}
+
+function toCodeMirrorCompletion(item: LspCompletionItem): Completion {
+  const completion: Completion = {
+    label: item.label,
+    detail: item.detail ?? undefined,
+    info: item.documentation ?? undefined,
+    type: mapCompletionKind(item.kind),
+  };
+  if (item.insertText && item.insertText !== item.label) {
+    completion.apply = item.insertText;
+  }
+  return completion;
+}
+
+function lspPositionToOffset(doc: Text, pos: LspPosition): number {
+  const lineNumber = Math.max(1, Math.min(pos.line + 1, doc.lines));
+  const line = doc.line(lineNumber);
+  return Math.min(line.to, line.from + Math.max(0, pos.character));
+}
+
+function projectDiagnostics(doc: Text, items: DiagnosticItem[]): Diagnostic[] {
+  const result: Diagnostic[] = [];
+  for (const item of items) {
+    const span = item.primarySpan;
+    if (!span) {
+      continue;
+    }
+    const startLineNum = Math.max(1, Math.min(span.lineStart, doc.lines));
+    const endLineNum = Math.max(startLineNum, Math.min(span.lineEnd, doc.lines));
+    const startLine = doc.line(startLineNum);
+    const endLine = doc.line(endLineNum);
+
+    const from = Math.min(startLine.to, startLine.from + Math.max(0, span.columnStart - 1));
+    const rawTo = Math.min(endLine.to, endLine.from + Math.max(0, span.columnEnd - 1));
+    const to = rawTo > from ? rawTo : Math.min(startLine.to, from + 1);
+
+    const severity: Diagnostic['severity'] =
+      item.severity === 'error' ? 'error' : item.severity === 'warning' ? 'warning' : 'info';
+
+    result.push({
+      from,
+      to,
+      severity,
+      message: item.code ? `[${item.code}] ${item.message}` : item.message,
+    });
+  }
+  return result;
+}
+
+function applyLspEdits(view: EditorView, edits: LspTextEdit[]): void {
+  if (edits.length === 0) {
+    return;
+  }
+  const doc = view.state.doc;
+  const changes = edits
+    .map((edit) => ({
+      from: lspPositionToOffset(doc, edit.range.start),
+      to: lspPositionToOffset(doc, edit.range.end),
+      insert: edit.newText,
+    }))
+    .sort((a, b) => a.from - b.from);
+
+  view.dispatch({ changes });
+}
+
 export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps>(
   function CodeMirrorEditor(
     {
@@ -65,9 +186,13 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       initialContent,
       isLargeFile,
       resolvedTheme,
+      lspReady,
+      activeDiagnostics,
       onDirtyChange,
       onCursorChange,
+      onDocumentChange,
       onSaveRequested,
+      onNavigateLocation,
     },
     ref,
   ) {
@@ -76,9 +201,131 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     const buffersRef = useRef<Map<string, TabBuffer>>(new Map());
     const themeCompartmentRef = useRef(new Compartment());
     const activePathRef = useRef(relativePath);
-    const callbacksRef = useRef({ onDirtyChange, onCursorChange, onSaveRequested });
+    const lspReadyRef = useRef(lspReady);
+    const callbacksRef = useRef({
+      onDirtyChange,
+      onCursorChange,
+      onDocumentChange,
+      onSaveRequested,
+      onNavigateLocation,
+    });
 
-    callbacksRef.current = { onDirtyChange, onCursorChange, onSaveRequested };
+    lspReadyRef.current = lspReady;
+    callbacksRef.current = {
+      onDirtyChange,
+      onCursorChange,
+      onDocumentChange,
+      onSaveRequested,
+      onNavigateLocation,
+    };
+
+    const triggerGotoDefinitionAt = async (view: EditorView, pos: number) => {
+      const currentPath = activePathRef.current;
+      const buf = buffersRef.current.get(currentPath);
+      if (!lspReadyRef.current || !isRustPath(currentPath) || buf?.isLargeFile) {
+        return;
+      }
+      const lineInfo = view.state.doc.lineAt(pos);
+      const line = lineInfo.number - 1;
+      const col = Math.max(0, pos - lineInfo.from);
+      try {
+        const locations = await lspGotoDefinition(currentPath, line, col);
+        if (locations.length > 0) {
+          callbacksRef.current.onNavigateLocation(locations[0]);
+        }
+      } catch {
+        // Ignore transient LSP cancellation errors during rapid navigation.
+      }
+    };
+
+    const runFormatDocument = async (): Promise<boolean> => {
+      const view = viewRef.current;
+      const currentPath = activePathRef.current;
+      const buf = buffersRef.current.get(currentPath);
+      if (!view || !lspReadyRef.current || !isRustPath(currentPath) || buf?.isLargeFile) {
+        return false;
+      }
+      try {
+        const edits = await lspFormatDocument(currentPath);
+        if (activePathRef.current !== currentPath) {
+          return false;
+        }
+        applyLspEdits(view, edits);
+        return edits.length > 0;
+      } catch {
+        return false;
+      }
+    };
+
+    const rustCompletionSource = async (
+      context: CompletionContext,
+    ): Promise<CompletionResult | null> => {
+      const currentPath = activePathRef.current;
+      const buf = buffersRef.current.get(currentPath);
+      if (!lspReadyRef.current || !isRustPath(currentPath) || buf?.isLargeFile) {
+        return null;
+      }
+
+      const word = context.matchBefore(/[\w:]+/);
+      if (!context.explicit && (!word || word.from === word.to)) {
+        // Also allow completion immediately after `.` or `::`.
+        const before = context.state.sliceDoc(Math.max(0, context.pos - 2), context.pos);
+        if (!before.endsWith('.') && before !== '::') {
+          return null;
+        }
+      }
+
+      const lineInfo = context.state.doc.lineAt(context.pos);
+      const line = lineInfo.number - 1;
+      const col = Math.max(0, context.pos - lineInfo.from);
+
+      try {
+        const items = await lspCompletion(currentPath, line, col);
+        if (items.length === 0) {
+          return null;
+        }
+        const from = word ? word.from : context.pos;
+        return {
+          from,
+          options: items.map(toCodeMirrorCompletion),
+          validFor: /^\w*$/,
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const rustHoverTooltip = hoverTooltip(async (view, pos): Promise<Tooltip | null> => {
+      const currentPath = activePathRef.current;
+      const buf = buffersRef.current.get(currentPath);
+      if (!lspReadyRef.current || !isRustPath(currentPath) || buf?.isLargeFile) {
+        return null;
+      }
+
+      const lineInfo = view.state.doc.lineAt(pos);
+      const line = lineInfo.number - 1;
+      const col = Math.max(0, pos - lineInfo.from);
+
+      try {
+        const hover = await lspHover(currentPath, line, col);
+        if (!hover || !hover.contents.trim()) {
+          return null;
+        }
+        return {
+          pos,
+          above: true,
+          create() {
+            const dom = document.createElement('div');
+            dom.className =
+              'max-w-md whitespace-pre-wrap rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1.5 font-[family-name:var(--font-mono)] text-[11px] text-[var(--text-primary)] shadow-lg';
+            dom.textContent = hover.contents;
+            return { dom };
+          },
+        };
+      } catch {
+        return null;
+      }
+    });
 
     const buildState = (path: string, docText: string, large: boolean, theme: ResolvedTheme) => {
       const extensions: Extension[] = [
@@ -99,11 +346,40 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
               return true;
             },
           },
+          {
+            key: 'F12',
+            preventDefault: true,
+            run: (view) => {
+              void triggerGotoDefinitionAt(view, view.state.selection.main.head);
+              return true;
+            },
+          },
+          {
+            key: 'Shift-Alt-f',
+            preventDefault: true,
+            run: () => {
+              void runFormatDocument();
+              return true;
+            },
+          },
           ...defaultKeymap,
           ...historyKeymap,
           ...searchKeymap,
           indentWithTab,
         ]),
+        EditorView.domEventHandlers({
+          mousedown: (event, view) => {
+            if ((event.ctrlKey || event.metaKey) && event.button === 0) {
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (pos !== null) {
+                event.preventDefault();
+                void triggerGotoDefinitionAt(view, pos);
+                return true;
+              }
+            }
+            return false;
+          },
+        }),
         EditorView.updateListener.of((update) => {
           const currentPath = activePathRef.current;
           const record = buffersRef.current.get(currentPath);
@@ -115,6 +391,9 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           if (update.docChanged) {
             const isDirty = !update.state.doc.eq(record.savedDoc);
             callbacksRef.current.onDirtyChange(currentPath, isDirty);
+            if (!record.isLargeFile) {
+              callbacksRef.current.onDocumentChange(currentPath, update.state.doc.toString());
+            }
           }
 
           if (update.selectionSet || update.docChanged) {
@@ -129,10 +408,17 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
         }),
       ];
 
-      // On large files (>= 1 MiB), skip whole-document bracket/selection scans so
+      // On large files (>= 1 MiB), skip whole-document bracket/selection/lint/LSP scans so
       // scrolling and typing stay responsive.
       if (!large) {
-        extensions.push(foldGutter(), bracketMatching(), highlightSelectionMatches());
+        extensions.push(
+          foldGutter(),
+          bracketMatching(),
+          highlightSelectionMatches(),
+          lintGutter(),
+          autocompletion({ override: [rustCompletionSource] }),
+          rustHoverTooltip,
+        );
       }
 
       return EditorState.create({
@@ -198,11 +484,15 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           });
           view.focus();
         },
+        async formatActiveDocument() {
+          return runFormatDocument();
+        },
         focus() {
           viewRef.current?.focus();
         },
       }),
       // resolvedTheme is captured so replaceDocumentText applies current theme cleanly.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       [resolvedTheme],
     );
 
@@ -279,6 +569,17 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       callbacksRef.current.onCursorChange(relativePath, lineInfo.number, head - lineInfo.from + 1);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [relativePath, initialContent, isLargeFile]);
+
+    // Sync inline lint squiggles and gutter markers whenever diagnostics or active tab changes.
+    useEffect(() => {
+      const view = viewRef.current;
+      const buf = buffersRef.current.get(relativePath);
+      if (!view || !buf || buf.isLargeFile) {
+        return;
+      }
+      const cmDiagnostics = projectDiagnostics(view.state.doc, activeDiagnostics);
+      view.dispatch(setDiagnostics(view.state, cmDiagnostics));
+    }, [relativePath, activeDiagnostics]);
 
     // Update CodeMirror theme instantaneously when Dark/Light/System changes.
     useEffect(() => {

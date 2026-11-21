@@ -1,45 +1,11 @@
-//! `rust-analyzer` lifecycle management and LSP JSON-RPC bridge.
-//!
-//! Full JSON-RPC transport and `lsp-types` integration are scheduled for Phase 5.
+//! `rust-analyzer` lifecycle management and LSP JSON-RPC 2.0 bridge for Anar.
 
-use anar_core::ProjectDescriptor;
+pub mod client;
+pub mod protocol;
+pub mod uri;
 
-/// Current lifecycle state of the managed `rust-analyzer` child process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LspStatus {
-    #[default]
-    Stopped,
-    Starting,
-    Ready,
-    Crashed,
-}
-
-/// Stub configuration for spawning `rust-analyzer` for a workspace.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LspSessionConfig {
-    pub workspace_name: String,
-    pub status: LspStatus,
-}
-
-impl LspSessionConfig {
-    /// Creates a stopped LSP session descriptor for the given project.
-    pub fn for_project(project: &ProjectDescriptor) -> Self {
-        Self {
-            workspace_name: project.name.clone(),
-            status: LspStatus::Stopped,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn session_starts_stopped() {
-        let project = ProjectDescriptor::new("demo", "/tmp/demo");
-        let cfg = LspSessionConfig::for_project(&project);
-        assert_eq!(cfg.workspace_name, "demo");
-        assert_eq!(cfg.status, LspStatus::Stopped);
-    }
-}
+pub use client::{find_rust_analyzer, LspManager};
+pub use protocol::{
+    LspCompletionItem, LspDiagnosticsEvent, LspHoverInfo, LspLocation, LspPosition, LspRange,
+    LspStatus, LspStatusEvent, LspTextEdit,
+};
