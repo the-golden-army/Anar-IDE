@@ -222,7 +222,10 @@ pub fn init_rusturbo_config(
         let stderr = String::from_utf8_lossy(&output.stderr);
         let msg = stderr.trim();
         return Err(if msg.is_empty() {
-            format!("`rusturbo init` exited with status {:?}", output.status.code())
+            format!(
+                "`rusturbo init` exited with status {:?}",
+                output.status.code()
+            )
         } else {
             format!("`rusturbo init` failed: {msg}")
         });
@@ -237,9 +240,7 @@ pub fn parse_rusturbo_analyze_json(raw: &str) -> Result<RusturboAnalysis, String
     let json_slice = if let Some(start) = trimmed.find('{') {
         &trimmed[start..]
     } else {
-        return Err(String::from(
-            "rusturbo analyze output did not contain JSON",
-        ));
+        return Err(String::from("rusturbo analyze output did not contain JSON"));
     };
 
     let val: Value = serde_json::from_str(json_slice)
