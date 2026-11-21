@@ -1,0 +1,12 @@
+[package]
+name = "anar-lsp"
+description = "rust-analyzer lifecycle management and JSON-RPC 2.0 bridge for Anar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anar-core.workspace = true

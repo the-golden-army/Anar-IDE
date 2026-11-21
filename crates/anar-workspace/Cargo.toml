@@ -1,0 +1,12 @@
+[package]
+name = "anar-workspace"
+description = "Scoped filesystem access, file watcher, project search, and git helpers for Anar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anar-core.workspace = true

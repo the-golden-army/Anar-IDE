@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/anar-core",
+    "crates/anar-lsp",
+    "crates/anar-runner",
+    "crates/anar-workspace",
+    "crates/anar-frameworks",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/Nour-yahyaoui/anar"
+authors = ["Nour Yahyaoui"]
+
+[workspace.dependencies]
+anar-core = { path = "crates/anar-core" }
+anar-lsp = { path = "crates/anar-lsp" }
+anar-runner = { path = "crates/anar-runner" }
+anar-workspace = { path = "crates/anar-workspace" }
+anar-frameworks = { path = "crates/anar-frameworks" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
