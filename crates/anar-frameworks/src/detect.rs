@@ -163,12 +163,9 @@ pub fn detect_workspace_frameworks(
 /// Maps a Cargo crate name to a [`FrameworkKind`], if supported.
 pub fn framework_from_crate_name(name: &str) -> Option<FrameworkKind> {
     let normalized = name.trim().to_ascii_lowercase();
-    for kind in KNOWN_FRAMEWORKS {
-        if crate_name_for(kind) == normalized {
-            return Some(kind);
-        }
-    }
-    None
+    KNOWN_FRAMEWORKS
+        .into_iter()
+        .find(|&kind| crate_name_for(kind) == normalized)
 }
 
 #[derive(Default)]

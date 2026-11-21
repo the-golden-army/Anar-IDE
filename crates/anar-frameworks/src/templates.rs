@@ -175,10 +175,7 @@ pub fn scaffold_project(
     Ok(target_dir)
 }
 
-fn build_template_files(
-    project_name: &str,
-    template: ProjectTemplateId,
-) -> Vec<(String, String)> {
+fn build_template_files(project_name: &str, template: ProjectTemplateId) -> Vec<(String, String)> {
     let crate_ident = project_name.replace('-', "_");
     let gitignore = "/target\nCargo.lock\n".to_string();
 

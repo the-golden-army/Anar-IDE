@@ -90,12 +90,11 @@ mod tests {
     }
 
     fn find_fw(report: &WorkspaceFrameworkReport, kind: FrameworkKind) -> &DetectedFramework {
-        for fw in &report.detected {
-            if fw.kind == kind {
-                return fw;
-            }
-        }
-        panic!("expected framework {kind:?} in report");
+        report
+            .detected
+            .iter()
+            .find(|f| f.kind == kind)
+            .expect("expected framework in report")
     }
 
     #[test]
