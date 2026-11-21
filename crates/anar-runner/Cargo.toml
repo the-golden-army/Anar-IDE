@@ -1,0 +1,12 @@
+[package]
+name = "anar-runner"
+description = "Build, run, check, and test pipeline supporting Cargo and Rusturbo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anar-core.workspace = true
