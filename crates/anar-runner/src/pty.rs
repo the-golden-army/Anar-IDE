@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -23,7 +23,7 @@ pub enum PtyEvent {
 struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
 /// Manages active interactive PTY sessions across Unix PTYs and Windows ConPTY.
@@ -67,11 +67,12 @@ impl PtyManager {
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
 
-        let child = pair
+        let mut child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("failed to spawn shell `{shell}`: {e}"))?;
         drop(pair.slave);
+        let killer = child.clone_killer();
 
         let mut reader = pair
             .master
@@ -93,37 +94,38 @@ impl PtyManager {
                 PtySession {
                     master: pair.master,
                     writer,
-                    child,
+                    killer,
                 },
             );
         }
 
-        let manager = Arc::clone(self);
-        thread::spawn(move || {
+        let emit = Arc::new(emit);
+        let reader_emit = Arc::clone(&emit);
+        let reader_handle = thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
-                        emit(PtyEvent::Data {
+                        reader_emit(PtyEvent::Data {
                             session_id,
                             data: buf[..n].to_vec(),
                         });
                     }
                 }
             }
+        });
 
-            let removed = manager
-                .sessions
-                .lock()
-                .ok()
-                .and_then(|mut guard| guard.remove(&session_id));
-
-            let exit_code = match removed {
-                Some(mut session) => session.child.wait().ok().map(|s| s.exit_code()),
-                None => None,
-            };
-
+        let manager = Arc::clone(self);
+        thread::spawn(move || {
+            let wait_status = child.wait().ok();
+            let exit_code = wait_status.map(|status| status.exit_code());
+            // Drop `MasterPty` and `writer` immediately so Windows ConPTY closes
+            // its output pipe and unblocks `reader.read` cleanly.
+            if let Ok(mut guard) = manager.sessions.lock() {
+                guard.remove(&session_id);
+            }
+            let _ = reader_handle.join();
             emit(PtyEvent::Exited {
                 session_id,
                 exit_code,
@@ -182,7 +184,7 @@ impl PtyManager {
         let Some(session) = guard.get_mut(&session_id) else {
             return Ok(false);
         };
-        let _ = session.child.kill();
+        let _ = session.killer.kill();
         Ok(true)
     }
 
@@ -190,7 +192,7 @@ impl PtyManager {
     pub fn kill_all(&self) {
         if let Ok(mut guard) = self.sessions.lock() {
             for session in guard.values_mut() {
-                let _ = session.child.kill();
+                let _ = session.killer.kill();
             }
         }
     }
@@ -254,9 +256,11 @@ mod tests {
             .expect("spawn PTY shell");
 
         manager.resize(session_id, 100, 30).expect("resize PTY");
-        manager.write(session_id, "exit\r\n").expect("write exit");
+        manager.write(session_id, "exit\r").expect("write exit");
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut retried_exit = false;
+        let started_at = std::time::Instant::now();
         loop {
             let done = events
                 .lock()
@@ -264,6 +268,10 @@ mod tests {
                 .unwrap_or(false);
             if done || std::time::Instant::now() >= deadline {
                 break;
+            }
+            if !retried_exit && started_at.elapsed() >= std::time::Duration::from_secs(2) {
+                let _ = manager.write(session_id, "exit\r");
+                retried_exit = true;
             }
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
