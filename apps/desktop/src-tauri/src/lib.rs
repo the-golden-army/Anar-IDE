@@ -243,12 +243,8 @@ async fn pick_workspace_folder(
         .into_path()
         .map_err(|err| format!("selected folder is not a local filesystem path: {err}"))?;
 
-    let info = open_workspace_with_optional_emitter(
-        &path,
-        Some(app.clone()),
-        &ws_state,
-        &prefs_state,
-    )?;
+    let emitter = Some(app.clone());
+    let info = open_workspace_with_optional_emitter(&path, emitter, &ws_state, &prefs_state)?;
     start_lsp_for_workspace(&app, &info, &lsp_state);
     Ok(Some(info))
 }
@@ -261,12 +257,9 @@ fn open_workspace_folder(
     prefs_state: tauri::State<'_, PreferencesState>,
     lsp_state: tauri::State<'_, LspState>,
 ) -> Result<WorkspaceInfo, String> {
-    let info = open_workspace_with_optional_emitter(
-        Path::new(&path),
-        Some(app.clone()),
-        &ws_state,
-        &prefs_state,
-    )?;
+    let emitter = Some(app.clone());
+    let root = Path::new(&path);
+    let info = open_workspace_with_optional_emitter(root, emitter, &ws_state, &prefs_state)?;
     start_lsp_for_workspace(&app, &info, &lsp_state);
     Ok(info)
 }

@@ -76,9 +76,8 @@ jobs:
         run: |
           if ! cargo fmt --all -- --check; then
             if [ "${{ runner.os }}" = "Linux" ]; then
-              cargo fmt --all -- --check 2>&1 | head -n 30 | while IFS= read -r line; do
-                echo "::warning::$line"
-              done
+              DIFF=$(cargo fmt --all -- --check 2>&1 | sed ':a;N;$!ba;s/\n/ | /g')
+              echo "::warning::${DIFF:0:1500}"
             fi
             exit 1
           fi

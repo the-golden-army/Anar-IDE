@@ -104,11 +104,12 @@ impl LspManager {
         let status_cb: StatusCallback = Arc::new(on_status);
         let diag_cb: DiagnosticsCallback = Arc::new(on_diagnostics);
         if let Ok(mut guard) = self.callbacks.lock() {
-            *guard = Some((
+            let entry = (
                 workspace_root.to_path_buf(),
                 Arc::clone(&status_cb),
                 Arc::clone(&diag_cb),
-            ));
+            );
+            *guard = Some(entry);
         }
         if let Ok(mut count) = self.restart_count.lock() {
             *count = 0;
