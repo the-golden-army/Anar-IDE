@@ -1,20 +1,28 @@
-import { X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ExplorerView } from './ExplorerView';
+import { ExtensionsView } from './ExtensionsView';
 import { GitView } from './GitView';
 import { SearchView } from './SearchView';
+import { AboutSidebarView, DebugSidebarView, SettingsSidebarView } from './SidebarExtraViews';
 import type { GitChangedFile, GitDiffResult, GitStatusReport } from '../types/git';
-import type { LspLocation } from '../types/lsp';
-import { LAYOUT_LIMITS, type SidebarTab } from '../types/preferences';
+import type { LspLocation, LspStatusEvent } from '../types/lsp';
+import {
+  LAYOUT_LIMITS,
+  type ActivityView,
+  type CompilerBackend,
+  type ThemeMode,
+} from '../types/preferences';
+import type { RunnerAction } from '../types/runner';
 import type { WorkspaceSearchResult } from '../types/search';
 import type { FileEntry, WorkspaceInfo } from '../types/workspace';
 
 interface SidebarPanelProps {
   open: boolean;
   width: number;
-  activeTab: SidebarTab;
+  activeView: ActivityView;
   isCompact: boolean;
-  workspace: WorkspaceInfo | null;
+  workspace: WorkspaceInfo;
+  isSampleWorkspace: boolean;
   dirCache: Record<string, FileEntry[]>;
   expandedDirs: Set<string>;
   activeFilePath: string | null;
@@ -24,10 +32,15 @@ interface SidebarPanelProps {
   gitStatus: GitStatusReport | null;
   selectedGitDiff: GitDiffResult | null;
   gitLoading: boolean;
+  themeMode: ThemeMode;
+  zoomPercent: number;
+  compilerBackend: CompilerBackend;
+  lspStatus: LspStatusEvent;
+  isRunning: boolean;
   onClose: () => void;
   onResize: (width: number) => void;
-  onSelectTab: (tab: SidebarTab) => void;
   onOpenFolder: () => void;
+  onNewProject: () => void;
   onRefreshExplorer: () => void;
   onToggleDir: (relativePath: string) => void;
   onSelectFile: (relativePath: string) => void;
@@ -41,20 +54,23 @@ interface SidebarPanelProps {
   onSelectGitDiff: (entry: GitChangedFile) => void;
   onStageGitFile: (relPath: string) => void;
   onUnstageGitFile: (relPath: string) => void;
+  onRunAction: (action: RunnerAction) => void;
+  onOpenDebugConsole: () => void;
+  onThemeChange: (mode: ThemeMode) => void;
+  onThemeCycle: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
+  onZoomIn: () => void;
+  onOpenInspector: () => void;
 }
-
-const TAB_TITLES: Record<SidebarTab, string> = {
-  explorer: 'Explorer',
-  search: 'Search',
-  git: 'Source Control',
-};
 
 export function SidebarPanel({
   open,
   width,
-  activeTab,
+  activeView,
   isCompact,
   workspace,
+  isSampleWorkspace,
   dirCache,
   expandedDirs,
   activeFilePath,
@@ -64,10 +80,15 @@ export function SidebarPanel({
   gitStatus,
   selectedGitDiff,
   gitLoading,
+  themeMode,
+  zoomPercent,
+  compilerBackend,
+  lspStatus,
+  isRunning,
   onClose,
   onResize,
-  onSelectTab,
   onOpenFolder,
+  onNewProject,
   onRefreshExplorer,
   onToggleDir,
   onSelectFile,
@@ -81,6 +102,14 @@ export function SidebarPanel({
   onSelectGitDiff,
   onStageGitFile,
   onUnstageGitFile,
+  onRunAction,
+  onOpenDebugConsole,
+  onThemeChange,
+  onThemeCycle,
+  onZoomOut,
+  onZoomReset,
+  onZoomIn,
+  onOpenInspector,
 }: SidebarPanelProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
@@ -89,8 +118,6 @@ export function SidebarPanel({
   if (!open) {
     return null;
   }
-
-  const headerTitle = TAB_TITLES[activeTab];
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -127,52 +154,21 @@ export function SidebarPanel({
     <aside
       aria-label="Sidebar panel"
       data-testid="sidebar-panel"
-      style={isCompact ? { width: 'min(280px, calc(100vw - 44px))' } : { width: `${width}px` }}
+      style={isCompact ? { width: 'min(260px, calc(100vw - 68px))' } : { width: `${width}px` }}
       className={`relative flex h-full shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-panel)] ${
-        isCompact ? 'shadow-xl' : ''
+        isCompact ? 'shadow-2xl' : ''
       }`}
     >
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
-            {headerTitle}
-          </span>
-        </div>
-        <button
-          type="button"
-          aria-label="Close sidebar"
-          onClick={onClose}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <div className="flex gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
-        {(['explorer', 'search', 'git'] as SidebarTab[]).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => onSelectTab(tab)}
-            className={`rounded-[var(--radius-sm)] px-2 py-0.5 text-xs capitalize transition-colors ${
-              activeTab === tab
-                ? 'bg-[var(--bg-active)] font-medium text-[var(--text-primary)]'
-                : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'explorer' ? (
+      {activeView === 'explorer' && (
         <ExplorerView
           workspace={workspace}
+          isSampleWorkspace={isSampleWorkspace}
           dirCache={dirCache}
           expandedDirs={expandedDirs}
           activeFilePath={activeFilePath}
           dirtyPaths={dirtyPaths}
           onOpenFolder={onOpenFolder}
+          onNewProject={onNewProject}
           onRefresh={onRefreshExplorer}
           onToggleDir={onToggleDir}
           onSelectFile={onSelectFile}
@@ -181,17 +177,21 @@ export function SidebarPanel({
           onRenameEntry={onRenameEntry}
           onDeleteEntry={onDeleteEntry}
         />
-      ) : activeTab === 'search' ? (
+      )}
+
+      {activeView === 'search' && (
         <SearchView
-          hasWorkspace={workspace !== null}
+          hasWorkspace={!isSampleWorkspace}
           searchResult={searchResult}
           isSearching={isSearching}
           onSearch={onSearchWorkspace}
           onOpenLocation={onOpenLocation}
         />
-      ) : (
+      )}
+
+      {activeView === 'git' && (
         <GitView
-          hasWorkspace={workspace !== null}
+          hasWorkspace={!isSampleWorkspace}
           status={gitStatus}
           selectedDiff={selectedGitDiff}
           isLoading={gitLoading}
@@ -202,6 +202,34 @@ export function SidebarPanel({
           onOpenFile={onSelectFile}
         />
       )}
+
+      {activeView === 'debug' && (
+        <DebugSidebarView
+          hasWorkspace={!isSampleWorkspace}
+          isRunning={isRunning}
+          onRunAction={onRunAction}
+          onOpenDebugConsole={onOpenDebugConsole}
+        />
+      )}
+
+      {activeView === 'extensions' && <ExtensionsView />}
+
+      {activeView === 'settings' && (
+        <SettingsSidebarView
+          themeMode={themeMode}
+          zoomPercent={zoomPercent}
+          compilerBackend={compilerBackend}
+          lspStatus={lspStatus}
+          onThemeChange={onThemeChange}
+          onThemeCycle={onThemeCycle}
+          onZoomOut={onZoomOut}
+          onZoomReset={onZoomReset}
+          onZoomIn={onZoomIn}
+          onOpenInspector={onOpenInspector}
+        />
+      )}
+
+      {activeView === 'about' && <AboutSidebarView />}
 
       {!isCompact && (
         <div
@@ -229,7 +257,7 @@ export function SidebarPanel({
           type="button"
           aria-label="Dismiss sidebar overlay"
           onClick={onClose}
-          className="flex-1 bg-black/40"
+          className="flex-1 bg-black/50"
         />
       </div>
     );

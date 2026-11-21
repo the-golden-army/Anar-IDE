@@ -22,7 +22,9 @@ import {
   lineNumbers,
   type Tooltip,
 } from '@codemirror/view';
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { CodeMinimap } from './CodeMinimap';
+import { createCodeMirrorTheme } from './codemirrorTheme';
 import {
   lspCompletion,
   lspFormatDocument,
@@ -32,7 +34,6 @@ import {
 import type { LspCompletionItem, LspLocation, LspPosition, LspTextEdit } from '../../types/lsp';
 import type { ResolvedTheme } from '../../types/preferences';
 import type { DiagnosticItem } from '../../types/runner';
-import { createCodeMirrorTheme } from './codemirrorTheme';
 
 export interface CodeMirrorEditorHandle {
   getDocumentText: (relativePath: string) => string | null;
@@ -210,6 +211,9 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       onNavigateLocation,
     });
 
+    const [minimapText, setMinimapText] = useState(isLargeFile ? '' : initialContent);
+    const [activeLine, setActiveLine] = useState(1);
+
     lspReadyRef.current = lspReady;
     callbacksRef.current = {
       onDirtyChange,
@@ -268,7 +272,6 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
 
       const word = context.matchBefore(/[\w:]+/);
       if (!context.explicit && (!word || word.from === word.to)) {
-        // Also allow completion immediately after `.` or `::`.
         const before = context.state.sliceDoc(Math.max(0, context.pos - 2), context.pos);
         if (!before.endsWith('.') && before !== '::') {
           return null;
@@ -392,13 +395,16 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
             const isDirty = !update.state.doc.eq(record.savedDoc);
             callbacksRef.current.onDirtyChange(currentPath, isDirty);
             if (!record.isLargeFile) {
-              callbacksRef.current.onDocumentChange(currentPath, update.state.doc.toString());
+              const nextText = update.state.doc.toString();
+              setMinimapText(nextText);
+              callbacksRef.current.onDocumentChange(currentPath, nextText);
             }
           }
 
           if (update.selectionSet || update.docChanged) {
             const head = update.state.selection.main.head;
             const lineInfo = update.state.doc.lineAt(head);
+            setActiveLine(lineInfo.number);
             callbacksRef.current.onCursorChange(
               currentPath,
               lineInfo.number,
@@ -408,8 +414,6 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
         }),
       ];
 
-      // On large files (>= 1 MiB), skip whole-document bracket/selection/lint/LSP scans so
-      // scrolling and typing stay responsive.
       if (!large) {
         extensions.push(
           foldGutter(),
@@ -425,6 +429,22 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
         doc: docText,
         extensions,
       });
+    };
+
+    const revealLineCol = (line: number, col: number) => {
+      const view = viewRef.current;
+      if (!view) {
+        return;
+      }
+      const clampedLine = Math.max(1, Math.min(line, view.state.doc.lines));
+      const lineInfo = view.state.doc.line(clampedLine);
+      const clampedCol = Math.max(1, col);
+      const pos = Math.min(lineInfo.from + clampedCol - 1, lineInfo.to);
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+      });
+      view.focus();
     };
 
     useImperativeHandle(
@@ -462,6 +482,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           const view = viewRef.current;
           if (view && activePathRef.current === targetPath) {
             view.setState(nextState);
+            setMinimapText(large ? '' : content);
           }
           callbacksRef.current.onDirtyChange(targetPath, false);
           callbacksRef.current.onCursorChange(targetPath, 1, 1);
@@ -470,19 +491,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           buffersRef.current.delete(targetPath);
         },
         revealLocation(line: number, col: number) {
-          const view = viewRef.current;
-          if (!view) {
-            return;
-          }
-          const clampedLine = Math.max(1, Math.min(line, view.state.doc.lines));
-          const lineInfo = view.state.doc.line(clampedLine);
-          const clampedCol = Math.max(1, col);
-          const pos = Math.min(lineInfo.from + clampedCol - 1, lineInfo.to);
-          view.dispatch({
-            selection: { anchor: pos },
-            effects: EditorView.scrollIntoView(pos, { y: 'center' }),
-          });
-          view.focus();
+          revealLineCol(line, col);
         },
         async formatActiveDocument() {
           return runFormatDocument();
@@ -491,12 +500,10 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           viewRef.current?.focus();
         },
       }),
-      // resolvedTheme is captured so replaceDocumentText applies current theme cleanly.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [resolvedTheme],
     );
 
-    // Mount CodeMirror EditorView once and swap EditorState per active tab.
     useEffect(() => {
       const parent = containerRef.current;
       if (!parent) {
@@ -519,15 +526,21 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       });
       viewRef.current = view;
 
+      // Default cursor to line 4 when viewing the initial sample main.rs snippet.
+      if (relativePath === 'src/main.rs' && initialState.doc.lines >= 4) {
+        const line4 = initialState.doc.line(4);
+        const targetPos = Math.min(line4.to, line4.from + 40);
+        view.dispatch({ selection: { anchor: targetPos } });
+        setActiveLine(4);
+      }
+
       return () => {
         view.destroy();
         viewRef.current = null;
       };
-      // Mount once; tab switching and theme updates are handled in dedicated effects below.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Switch active tab state cleanly while preserving scroll and undo history.
     useEffect(() => {
       const view = viewRef.current;
       if (!view) {
@@ -564,13 +577,15 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       view.scrollDOM.scrollTop = nextBuf.scrollTop;
       view.scrollDOM.scrollLeft = nextBuf.scrollLeft;
 
+      setMinimapText(nextBuf.isLargeFile ? '' : nextBuf.state.doc.toString());
+
       const head = nextBuf.state.selection.main.head;
       const lineInfo = nextBuf.state.doc.lineAt(head);
+      setActiveLine(lineInfo.number);
       callbacksRef.current.onCursorChange(relativePath, lineInfo.number, head - lineInfo.from + 1);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [relativePath, initialContent, isLargeFile]);
 
-    // Sync inline lint squiggles and gutter markers whenever diagnostics or active tab changes.
     useEffect(() => {
       const view = viewRef.current;
       const buf = buffersRef.current.get(relativePath);
@@ -581,7 +596,6 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       view.dispatch(setDiagnostics(view.state, cmDiagnostics));
     }, [relativePath, activeDiagnostics]);
 
-    // Update CodeMirror theme instantaneously when Dark/Light/System changes.
     useEffect(() => {
       const view = viewRef.current;
       if (!view) {
@@ -593,13 +607,21 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     }, [resolvedTheme]);
 
     return (
-      <div
-        ref={containerRef}
-        data-testid="codemirror-editor"
-        data-active-path={relativePath}
-        data-large-file={isLargeFile ? 'true' : 'false'}
-        className="h-full w-full flex-1 overflow-hidden bg-[var(--bg-app)]"
-      />
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--bg-editor)]">
+        <div
+          ref={containerRef}
+          data-testid="codemirror-editor"
+          data-active-path={relativePath}
+          data-large-file={isLargeFile ? 'true' : 'false'}
+          className="h-full min-w-0 flex-1 overflow-hidden bg-[var(--bg-editor)]"
+        />
+        <CodeMinimap
+          content={minimapText}
+          activeLine={activeLine}
+          isLargeFile={isLargeFile}
+          onJumpToLine={(line) => revealLineCol(line, 1)}
+        />
+      </div>
     );
   },
 );

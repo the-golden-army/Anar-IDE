@@ -1,23 +1,27 @@
 import {
   AlertCircle,
   AlertTriangle,
+  ChevronDown,
   CornerDownLeft,
+  FileOutput,
   Info,
+  MoreHorizontal,
+  Plus,
   Square,
   Terminal,
   TerminalSquare,
   Trash2,
-  X,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { TerminalView } from './TerminalView';
-import { LAYOUT_LIMITS, type BottomTab, type ResolvedTheme } from '../types/preferences';
+import { TerminalView, type TerminalViewHandle } from './TerminalView';
+import { LAYOUT_LIMITS, type BottomPanelView, type ResolvedTheme } from '../types/preferences';
 import type { DiagnosticItem, OutputLine, RunnerAction } from '../types/runner';
 
 interface BottomPanelProps {
   open: boolean;
   height: number;
-  activeTab: BottomTab;
+  activeTab: BottomPanelView;
   workspaceKey: string | null;
   resolvedTheme: ResolvedTheme;
   outputLines: OutputLine[];
@@ -27,18 +31,21 @@ interface BottomPanelProps {
   lastExitSummary: string | null;
   onClose: () => void;
   onResize: (height: number) => void;
-  onSelectTab: (tab: BottomTab) => void;
+  onSelectTab: (tab: BottomPanelView) => void;
   onClearOutput: () => void;
   onStopRun: () => void;
   onSendStdin: (input: string) => void;
   onSelectDiagnostic: (diagnostic: DiagnosticItem) => void;
 }
 
-const TABS: { id: BottomTab; label: string; Icon: typeof Terminal }[] = [
-  { id: 'output', label: 'Output', Icon: TerminalSquare },
-  { id: 'problems', label: 'Problems', Icon: AlertTriangle },
+const TABS: { id: BottomPanelView; label: string; Icon: typeof Terminal }[] = [
   { id: 'terminal', label: 'Terminal', Icon: Terminal },
+  { id: 'problems', label: 'Problems', Icon: AlertCircle },
+  { id: 'output', label: 'Output', Icon: FileOutput },
+  { id: 'debug-console', label: 'Debug Console', Icon: TerminalSquare },
 ];
+
+const SHELL_OPTIONS = ['PowerShell', 'bash', 'zsh', 'sh'] as const;
 
 export function BottomPanel({
   open,
@@ -62,8 +69,13 @@ export function BottomPanel({
   const startYRef = useRef(0);
   const startHeightRef = useRef(height);
   const outputEndRef = useRef<HTMLDivElement | null>(null);
+  const terminalRef = useRef<TerminalViewHandle | null>(null);
+
   const [isResizing, setIsResizing] = useState(false);
   const [stdinValue, setStdinValue] = useState('');
+  const [selectedShell, setSelectedShell] = useState<string>('PowerShell');
+  const [shellMenuOpen, setShellMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'output' && outputEndRef.current?.scrollIntoView) {
@@ -77,6 +89,7 @@ export function BottomPanel({
 
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.filter((d) => d.severity === 'warning').length;
+  const badgeCount = diagnostics.length > 0 ? diagnostics.length : 0;
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -136,8 +149,8 @@ export function BottomPanel({
         />
       </div>
 
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
-        <div role="tablist" aria-label="Bottom panel views" className="flex items-center gap-1">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3 select-none">
+        <div role="tablist" aria-label="Bottom panel views" className="flex items-center gap-1.5">
           {TABS.map(({ id, label, Icon }) => {
             const selected = activeTab === id;
             return (
@@ -147,23 +160,21 @@ export function BottomPanel({
                 role="tab"
                 aria-selected={selected}
                 onClick={() => onSelectTab(id)}
-                className={`inline-flex h-6 items-center gap-1.5 rounded-[var(--radius-sm)] px-2 text-xs font-medium transition-colors ${
+                className={`inline-flex h-6 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors duration-150 ${
                   selected
-                    ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+                    ? 'border-[var(--accent-ring)] bg-[var(--accent-muted)] text-[var(--text-primary)]'
+                    : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 <span>{label}</span>
-                {id === 'problems' && diagnostics.length > 0 && (
+                {id === 'problems' && badgeCount > 0 && (
                   <span
-                    className={`rounded-full px-1.5 text-[10px] font-semibold ${
-                      errorCount > 0
-                        ? 'bg-[var(--status-err)]/20 text-[var(--status-err)]'
-                        : 'bg-[var(--status-warn)]/20 text-[var(--status-warn)]'
+                    className={`flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white ${
+                      errorCount > 0 ? 'bg-[var(--status-err)]' : 'bg-[var(--status-warn)]'
                     }`}
                   >
-                    {diagnostics.length}
+                    {badgeCount}
                   </span>
                 )}
               </button>
@@ -171,61 +182,166 @@ export function BottomPanel({
           })}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {activeTab === 'output' && (
+        <div className="relative flex items-center gap-1">
+          {activeTab === 'output' && isRunning && (
             <>
-              {isRunning && (
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--accent)]">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" />
-                  <span>cargo {activeRunAction}</span>
-                </span>
-              )}
-              {!isRunning && lastExitSummary && (
-                <span className="text-[11px] text-[var(--text-muted)]">{lastExitSummary}</span>
-              )}
-              {isRunning && (
-                <button
-                  type="button"
-                  aria-label="Stop run from output"
-                  title="Stop running process"
-                  onClick={onStopRun}
-                  className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-[11px] text-[var(--status-err)] hover:bg-[var(--status-err)]/15"
-                >
-                  <Square className="h-3 w-3 fill-current" />
-                  <span>Stop</span>
-                </button>
-              )}
+              <span className="mr-1 inline-flex items-center gap-1.5 text-[11px] text-[var(--accent)]">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" />
+                <span>cargo {activeRunAction}</span>
+              </span>
               <button
                 type="button"
-                aria-label="Clear output"
-                title="Clear output"
-                onClick={onClearOutput}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                aria-label="Stop run from output"
+                onClick={onStopRun}
+                className="mr-1 inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-[var(--status-err)] hover:bg-[var(--status-err)]/15"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Square className="h-3 w-3 fill-current" />
+                <span>Stop</span>
               </button>
             </>
           )}
-
-          {activeTab === 'problems' && (
-            <span className="text-[11px] text-[var(--text-muted)]">
-              {errorCount} errors · {warningCount} warnings
-            </span>
+          {activeTab === 'output' && !isRunning && lastExitSummary && (
+            <span className="mr-1 text-[11px] text-[var(--text-muted)]">{lastExitSummary}</span>
           )}
 
           <button
             type="button"
-            aria-label="Close bottom panel"
-            onClick={onClose}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            aria-label="New terminal session"
+            title="New / Restart Terminal"
+            onClick={() => {
+              onSelectTab('terminal');
+              terminalRef.current?.restart();
+            }}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
-            <X className="h-3.5 w-3.5" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
+
+          <button
+            type="button"
+            aria-label={activeTab === 'terminal' ? 'Kill terminal' : 'Clear output'}
+            title={activeTab === 'terminal' ? 'Kill Terminal' : 'Clear Output'}
+            onClick={() => {
+              if (activeTab === 'terminal') {
+                terminalRef.current?.kill();
+              } else {
+                onClearOutput();
+              }
+            }}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Terminal actions menu"
+              aria-expanded={moreMenuOpen}
+              onClick={() => {
+                setMoreMenuOpen((prev) => !prev);
+                setShellMenuOpen(false);
+              }}
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+
+            <AnimatePresence>
+              {moreMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 bottom-7 z-30 w-40 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-1 text-xs shadow-xl"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      terminalRef.current?.restart();
+                    }}
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    Restart Terminal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onClearOutput();
+                    }}
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    Clear Output
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      onClose();
+                    }}
+                    className="flex w-full items-center rounded px-2 py-1.5 text-left text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    Hide Panel
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="relative ml-1">
+            <button
+              type="button"
+              aria-label="Select shell"
+              aria-expanded={shellMenuOpen}
+              onClick={() => {
+                setShellMenuOpen((prev) => !prev);
+                setMoreMenuOpen(false);
+              }}
+              className="inline-flex h-6 items-center gap-1 rounded px-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              <span>{selectedShell}</span>
+              <ChevronDown className="h-3 w-3" />
+            </button>
+
+            <AnimatePresence>
+              {shellMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 bottom-7 z-30 w-32 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-1 text-xs shadow-xl"
+                >
+                  {SHELL_OPTIONS.map((shell) => (
+                    <button
+                      key={shell}
+                      type="button"
+                      onClick={() => {
+                        setSelectedShell(shell);
+                        setShellMenuOpen(false);
+                        terminalRef.current?.restart();
+                      }}
+                      className={`flex w-full items-center rounded px-2 py-1 text-left transition-colors ${
+                        selectedShell === shell
+                          ? 'bg-[var(--accent-muted)] font-medium text-[var(--text-primary)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                      }`}
+                    >
+                      {shell}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
       {activeTab === 'output' && (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col bg-[var(--bg-editor)]">
           <div
             data-testid="runner-output"
             className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] text-xs"
@@ -288,10 +404,15 @@ export function BottomPanel({
       {activeTab === 'problems' && (
         <div
           data-testid="problems-list"
-          className="anar-scroll flex-1 overflow-auto p-2 text-xs text-[var(--text-secondary)]"
+          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-2.5 text-xs text-[var(--text-secondary)]"
         >
+          <div className="mb-1.5 flex items-center justify-between px-2 text-[11px] text-[var(--text-muted)]">
+            <span>
+              {errorCount} errors · {warningCount} warnings
+            </span>
+          </div>
           {diagnostics.length === 0 ? (
-            <p className="p-1 font-[family-name:var(--font-mono)] leading-relaxed">
+            <p className="px-2 py-1 font-[family-name:var(--font-mono)] leading-relaxed">
               No compiler errors or warnings. Run Check or Build to inspect diagnostics.
             </p>
           ) : (
@@ -315,7 +436,7 @@ export function BottomPanel({
                     <button
                       type="button"
                       onClick={() => onSelectDiagnostic(diag)}
-                      className="flex w-full items-start justify-between gap-3 rounded-[var(--radius-sm)] px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                      className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                     >
                       <div className="flex min-w-0 items-start gap-2">
                         <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${colorClass}`} />
@@ -345,7 +466,17 @@ export function BottomPanel({
         </div>
       )}
 
+      {activeTab === 'debug-console' && (
+        <div
+          data-testid="debug-console"
+          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-3 font-[family-name:var(--font-mono)] text-xs text-[var(--text-secondary)]"
+        >
+          <p>Debug Console ready. Start Run or Check to inspect target output.</p>
+        </div>
+      )}
+
       <TerminalView
+        ref={terminalRef}
         active={activeTab === 'terminal'}
         workspaceKey={workspaceKey}
         resolvedTheme={resolvedTheme}

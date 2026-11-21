@@ -7,7 +7,7 @@ import type { ResolvedTheme } from '../../types/preferences';
 const baseTheme = EditorView.theme({
   '&': {
     height: '100%',
-    backgroundColor: 'var(--bg-app)',
+    backgroundColor: 'var(--bg-editor)',
     color: 'var(--text-primary)',
     fontFamily: 'var(--font-mono)',
     fontSize: 'var(--editor-font-size, 13px)',
@@ -15,10 +15,10 @@ const baseTheme = EditorView.theme({
   '.cm-scroller': {
     overflow: 'auto',
     fontFamily: 'var(--font-mono)',
-    lineHeight: '1.6',
+    lineHeight: '1.68',
   },
   '.cm-content': {
-    padding: '10px 0',
+    padding: '12px 0',
     caretColor: 'var(--accent)',
   },
   '.cm-cursor, .cm-dropCursor': {
@@ -29,17 +29,23 @@ const baseTheme = EditorView.theme({
     backgroundColor: 'var(--accent-muted)',
   },
   '.cm-gutters': {
-    backgroundColor: 'var(--bg-panel)',
+    backgroundColor: 'var(--bg-gutter)',
     color: 'var(--text-muted)',
     borderRight: '1px solid var(--border-subtle)',
+    paddingLeft: '6px',
+    paddingRight: '4px',
     userSelect: 'none',
   },
+  '.cm-lineNumbers .cm-gutterElement': {
+    minWidth: '28px',
+    paddingRight: '8px',
+  },
   '.cm-activeLineGutter': {
-    backgroundColor: 'var(--bg-hover)',
+    backgroundColor: 'rgba(139, 92, 246, 0.14)',
     color: 'var(--text-primary)',
   },
   '.cm-activeLine': {
-    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
   },
   '.cm-matchingBracket': {
     backgroundColor: 'var(--accent-muted)',
@@ -60,22 +66,22 @@ const baseTheme = EditorView.theme({
     backgroundColor: 'var(--bg-elevated)',
     color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)',
-    borderRadius: '4px',
+    borderRadius: '5px',
   },
   '.cm-textfield': {
     backgroundColor: 'var(--bg-input)',
     color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)',
-    borderRadius: '4px',
+    borderRadius: '5px',
   },
 });
 
 const darkHighlightStyle = HighlightStyle.define([
-  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword], color: '#f97316' },
-  { tag: [tags.typeName, tags.className, tags.namespace], color: '#38bdf8' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#fbbf24' },
+  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword], color: '#eab308' },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: '#93c5fd' },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#7dd3fc' },
   { tag: [tags.macroName, tags.special(tags.name)], color: '#c084fc' },
-  { tag: [tags.string, tags.special(tags.string)], color: '#34d399' },
+  { tag: [tags.string, tags.special(tags.string)], color: '#4ade80' },
   { tag: [tags.number, tags.bool, tags.atom], color: '#fb7185' },
   {
     tag: [tags.comment, tags.lineComment, tags.blockComment],
@@ -88,11 +94,11 @@ const darkHighlightStyle = HighlightStyle.define([
 ]);
 
 const lightHighlightStyle = HighlightStyle.define([
-  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword], color: '#c2410c' },
-  { tag: [tags.typeName, tags.className, tags.namespace], color: '#0369a1' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#b45309' },
-  { tag: [tags.macroName, tags.special(tags.name)], color: '#7e22ce' },
-  { tag: [tags.string, tags.special(tags.string)], color: '#047857' },
+  { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword], color: '#b45309' },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: '#1d4ed8' },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: '#0369a1' },
+  { tag: [tags.macroName, tags.special(tags.name)], color: '#7c3aed' },
+  { tag: [tags.string, tags.special(tags.string)], color: '#15803d' },
   { tag: [tags.number, tags.bool, tags.atom], color: '#be123c' },
   {
     tag: [tags.comment, tags.lineComment, tags.blockComment],

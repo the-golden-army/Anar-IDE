@@ -1,12 +1,16 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as XTerm } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { RotateCw, Square, Terminal } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { isTauriRuntime } from '../services/preferencesClient';
 import { killPty, resizePty, spawnPty, writePty } from '../services/ptyClient';
 import type { ResolvedTheme } from '../types/preferences';
 import type { PtyEvent } from '../types/pty';
+
+export interface TerminalViewHandle {
+  restart: () => void;
+  kill: () => void;
+}
 
 interface TerminalViewProps {
   active: boolean;
@@ -14,13 +18,17 @@ interface TerminalViewProps {
   resolvedTheme: ResolvedTheme;
 }
 
-export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalViewProps) {
+export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView(
+  { active, workspaceKey, resolvedTheme },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const sessionIdRef = useRef<number | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const isTauri = isTauriRuntime();
 
   const startSession = useCallback(async () => {
     if (!isTauriRuntime()) {
@@ -67,6 +75,26 @@ export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalVi
     }
   }, []);
 
+  const killSession = useCallback(() => {
+    const sid = sessionIdRef.current;
+    if (sid !== null) {
+      sessionIdRef.current = null;
+      setSessionId(null);
+      void killPty(sid).catch(() => {});
+    }
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      restart: () => {
+        void startSession();
+      },
+      kill: killSession,
+    }),
+    [killSession, startSession],
+  );
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -77,18 +105,18 @@ export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalVi
       cursorBlink: true,
       fontSize: 12,
       fontFamily:
-        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       theme:
         resolvedTheme === 'light'
           ? {
-              background: '#f8fafc',
-              foreground: '#0f172a',
-              cursor: '#2563eb',
+              background: '#ffffff',
+              foreground: '#141224',
+              cursor: '#7c3aed',
             }
           : {
-              background: '#11161d',
+              background: '#09080e',
               foreground: '#e5e7eb',
-              cursor: '#60a5fa',
+              cursor: '#8b5cf6',
             },
     });
     const fit = new FitAddon();
@@ -139,7 +167,6 @@ export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalVi
       termRef.current = null;
       fitRef.current = null;
     };
-    // Mount once; theme updates are applied in a dedicated effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,8 +174,8 @@ export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalVi
     if (!termRef.current) return;
     termRef.current.options.theme =
       resolvedTheme === 'light'
-        ? { background: '#f8fafc', foreground: '#0f172a', cursor: '#2563eb' }
-        : { background: '#11161d', foreground: '#e5e7eb', cursor: '#60a5fa' };
+        ? { background: '#ffffff', foreground: '#141224', cursor: '#7c3aed' }
+        : { background: '#09080e', foreground: '#e5e7eb', cursor: '#8b5cf6' };
   }, [resolvedTheme]);
 
   useEffect(() => {
@@ -172,58 +199,52 @@ export function TerminalView({ active, workspaceKey, resolvedTheme }: TerminalVi
     if (workspaceKey !== null && active && isTauriRuntime()) {
       void startSession();
     }
-    // Restart shell only when opened workspace changes while terminal is active.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceKey]);
 
   return (
     <div
       data-testid="terminal-view"
-      className={`flex min-h-0 flex-1 flex-col ${active ? '' : 'hidden'}`}
+      data-session-id={sessionId ?? ''}
+      className={`relative flex min-h-0 flex-1 flex-col bg-[var(--bg-editor)] ${active ? '' : 'hidden'}`}
     >
-      <div className="flex h-7 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-[11px] text-[var(--text-secondary)]">
-        <div className="flex items-center gap-1.5">
-          <Terminal className="h-3 w-3 text-[var(--accent)]" />
-          <span>{sessionId !== null ? `Shell session #${sessionId}` : 'Shell idle'}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Restart terminal"
-            onClick={() => void startSession()}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-          >
-            <RotateCw className="h-3 w-3" />
-            <span>Restart</span>
-          </button>
-          {sessionId !== null && (
-            <button
-              type="button"
-              aria-label="Kill terminal"
-              onClick={() => {
-                const sid = sessionIdRef.current;
-                if (sid !== null) {
-                  sessionIdRef.current = null;
-                  setSessionId(null);
-                  void killPty(sid).catch(() => {});
-                }
-              }}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[var(--status-err)] hover:bg-[var(--status-err)]/15"
-            >
-              <Square className="h-2.5 w-2.5 fill-current" />
-              <span>Kill</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {errorMsg && (
         <div className="border-b border-[var(--status-err)] bg-[var(--bg-elevated)] px-3 py-1 text-[11px] text-[var(--status-err)]">
           {errorMsg}
         </div>
       )}
 
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden p-1" />
+      {!isTauri && (
+        <div className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] text-xs leading-relaxed">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[var(--status-ok)]">▸</span>
+            <span className="text-amber-400">PS</span>
+            <span className="text-[var(--text-secondary)]">C:\Users\Nour\rust-project&gt;</span>
+            <span className="text-[var(--text-primary)]">cargo run</span>
+          </div>
+          <div className="pl-6 text-[var(--status-ok)]">
+            Compiling <span className="text-[var(--text-secondary)]">rust-project v0.1.0</span>
+          </div>
+          <div className="pl-6 text-[var(--status-ok)]">
+            Finished{' '}
+            <span className="text-[var(--text-secondary)]">
+              `dev` profile [unoptimized + debuginfo] target(s) in 0.48s
+            </span>
+          </div>
+          <div className="pl-6 text-[var(--status-ok)]">
+            Running{' '}
+            <span className="text-[var(--text-secondary)]">`target\debug\rust-project.exe`</span>
+          </div>
+          <div className="mt-1 text-[var(--text-primary)]">Hello from Anar!</div>
+          <div className="text-[var(--text-primary)]">Give me a value:</div>
+          <div className="mt-0.5 inline-block h-3.5 w-2 border border-[var(--text-secondary)] align-middle" />
+        </div>
+      )}
+
+      <div
+        ref={containerRef}
+        className={`min-h-0 flex-1 overflow-hidden px-2 py-1 ${isTauri ? '' : 'hidden'}`}
+      />
     </div>
   );
-}
+});

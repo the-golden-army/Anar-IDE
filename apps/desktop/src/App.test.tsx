@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { PREFS_STORAGE_KEY, THEME_STORAGE_KEY } from './services/preferencesClient';
@@ -639,25 +639,86 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     mockMatchMedia(false);
   });
 
-  it('renders titlebar, sidebar, welcome screen, bottom panel, and statusbar', () => {
+  it('renders redesigned Anar IDE shell with titlebar, activity rail, explorer, editor, Arena Assistant, bottom panel, and statusbar', () => {
     render(<App />);
-    expect(screen.getByTestId('titlebar')).toBeInTheDocument();
-    expect(screen.getByTestId('sidebar-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
-    expect(screen.getByTestId('bottom-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('statusbar')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Anar' })).toBeInTheDocument();
+
+    const titlebar = screen.getByTestId('titlebar');
+    expect(titlebar).toBeInTheDocument();
+    expect(titlebar).toHaveTextContent('Anar');
+    expect(titlebar).toHaveTextContent('v2.3.0');
+    expect(screen.getByTestId('global-search-trigger')).toHaveTextContent('Search anything...');
+    expect(screen.getByTestId('global-search-trigger')).toHaveTextContent('Ctrl + K');
+
+    const rail = screen.getByTestId('activity-rail');
+    expect(rail).toHaveTextContent('Explorer');
+    expect(rail).toHaveTextContent('Search');
+    expect(rail).toHaveTextContent('Git');
+    expect(rail).toHaveTextContent('Debug');
+    expect(rail).toHaveTextContent('Extensions');
+    expect(rail).toHaveTextContent('Settings');
+    expect(rail).toHaveTextContent('About');
+
+    const tree = screen.getByTestId('file-tree');
+    expect(tree).toHaveTextContent('rust-project');
+    expect(tree).toHaveTextContent('main.rs');
+    expect(tree).toHaveTextContent('lib.rs');
+    expect(tree).toHaveTextContent('Cargo.toml');
+    expect(tree).toHaveTextContent('Cargo.lock');
+    expect(tree).toHaveTextContent('README.md');
+
+    expect(screen.getByTestId('editor-toolbar')).toHaveTextContent('Run');
+    expect(screen.getByTestId('editor-toolbar')).toHaveTextContent('Build');
+    expect(screen.getByTestId('editor-toolbar')).toHaveTextContent('Check');
+    expect(screen.getByTestId('editor-toolbar')).toHaveTextContent('Debug');
+    expect(screen.getByTestId('editor-toolbar')).toHaveTextContent('Stop');
+    expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
+      'data-active-path',
+      'src/main.rs',
+    );
+    expect(screen.getByTestId('code-minimap')).toBeInTheDocument();
+
+    const assistant = screen.getByTestId('arena-assistant-panel');
+    expect(assistant).toHaveTextContent('Arena Assistant');
+    expect(assistant).toHaveTextContent('Beta');
+    expect(assistant).toHaveTextContent('Hello, Nour');
+    expect(assistant).toHaveTextContent('How can I help you today?');
+    expect(assistant).toHaveTextContent('Explain this code');
+    expect(assistant).toHaveTextContent('Fix errors');
+    expect(assistant).toHaveTextContent('Generate code');
+    expect(assistant).toHaveTextContent('Improve this code');
+    expect(assistant).toHaveTextContent('Ctrl + Enter to send');
+
+    const bottomPanel = screen.getByTestId('bottom-panel');
+    expect(bottomPanel).toHaveTextContent('Terminal');
+    expect(bottomPanel).toHaveTextContent('Problems');
+    expect(bottomPanel).toHaveTextContent('Output');
+    expect(bottomPanel).toHaveTextContent('Debug Console');
+    expect(screen.getByRole('button', { name: 'Select shell' })).toHaveTextContent('PowerShell');
+
+    const statusbar = screen.getByTestId('statusbar');
+    expect(statusbar).toHaveTextContent('main');
+    expect(statusbar).toHaveTextContent('Rust Analyzer');
+    expect(statusbar).toHaveTextContent('Spaces: 4');
+    expect(statusbar).toHaveTextContent('UTF-8');
+    expect(statusbar).toHaveTextContent('LF');
+    expect(statusbar).toHaveTextContent('Rust');
+    expect(statusbar).toHaveTextContent('v2.3.0');
   });
 
   it('switches themes instantaneously and persists the selection', () => {
     render(<App />);
 
-    const lightRadio = screen.getByRole('radio', { name: 'Light theme' });
-    fireEvent.click(lightRadio);
+    // Toggle Light/Dark directly from TitleBar pill
+    const titlebarToggle = screen.getByTestId('titlebar-theme-toggle');
+    fireEvent.click(titlebarToggle);
 
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(document.documentElement.style.colorScheme).toBe('light');
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
+
+    // Open Settings view to verify full ThemeSwitcher radio group
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const lightRadio = screen.getByRole('radio', { name: 'Light theme' });
     expect(lightRadio).toHaveAttribute('aria-checked', 'true');
 
     const darkRadio = screen.getByRole('radio', { name: 'Dark theme' });
@@ -672,6 +733,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     const media = mockMatchMedia(false);
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'System theme' }));
     expect(document.documentElement.dataset.theme).toBe('dark');
 
     act(() => {
@@ -693,6 +756,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     render(<App />);
     expect(document.documentElement.dataset.theme).toBe('light');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('radio', { name: 'Light theme' })).toHaveAttribute(
       'aria-checked',
       'true',
@@ -731,10 +795,9 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     setViewportWidth(460);
     render(<App />);
 
-    expect(
-      screen.getByRole('button', { name: /Theme: System\. Click to switch theme/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('titlebar-theme-toggle')).toBeInTheDocument();
+    expect(screen.getByTestId('codemirror-editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('arena-assistant-panel')).not.toBeInTheDocument();
   });
 
   it('loads and persists preferences through Tauri IPC when available', async () => {
@@ -756,7 +819,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       expect(document.documentElement.dataset.theme).toBe('light');
     });
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Dark theme' }));
+    fireEvent.click(screen.getByTestId('titlebar-theme-toggle'));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('set_theme_mode', { mode: 'dark' });
@@ -770,7 +833,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('file-tree')).toBeInTheDocument();
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -823,6 +886,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -895,6 +959,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByText('main.rs')).toBeInTheDocument();
     });
 
@@ -946,6 +1011,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
   it('scales UI and editor zoom with Ctrl+/Ctrl-/Ctrl+0 and persists zoomPercent', async () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%');
     expect(document.documentElement.style.fontSize).toBe('16px');
     expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('13px');
@@ -970,27 +1036,15 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     expect(document.documentElement.style.fontSize).toBe('16px');
   });
 
-  it('toggles fullscreen via TitleBar button and F11 shortcut', async () => {
+  it('toggles fullscreen via F11 shortcut and window maximize button', async () => {
     setupMockRustWorkspace();
     render(<App />);
 
-    const fsBtn = await screen.findByRole('button', { name: 'Enter fullscreen' });
-    expect(fsBtn).toHaveAttribute('aria-pressed', 'false');
-
-    fireEvent.click(fsBtn);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Exit fullscreen' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-    });
+    expect(screen.getByRole('button', { name: 'Maximize window' })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'F11' });
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      );
+      expect(invokeMock).toHaveBeenCalledWith('toggle_window_fullscreen');
     });
   });
 
@@ -1001,10 +1055,11 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     // Open workspace first.
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
     });
 
-    // Click Run in TitleBar.
+    // Click Run in EditorToolbar.
     fireEvent.click(screen.getByRole('button', { name: 'Run project' }));
     await waitFor(() => {
       expect(screen.getByTestId('runner-output')).toHaveTextContent('give me a value');
@@ -1044,7 +1099,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       });
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open problems panel' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Problems/i }));
     const problemBtn = await screen.findByRole('button', { name: /mismatched types/i });
     fireEvent.click(problemBtn);
 
@@ -1063,21 +1118,24 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     // Open workspace and open src/main.rs.
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
       expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'main.rs' }));
     await waitFor(() => {
       expect(lspOpenedPaths).toContain('src/main.rs');
-      expect(screen.getByTestId('lsp-status-label')).toHaveTextContent('rust-analyzer: ready');
+      expect(screen.getByTestId('lsp-status-label')).toHaveAttribute('data-lsp-status', 'ready');
     });
 
     // Emit indexing -> ready status updates and live diagnostics from rust-analyzer.
     act(() => {
       emitLspStatus({ status: 'indexing', detail: 'loading metadata' });
     });
-    expect(screen.getByTestId('lsp-status-label')).toHaveTextContent(
-      'rust-analyzer: indexing (loading metadata)',
+    expect(screen.getByTestId('lsp-status-label')).toHaveAttribute('data-lsp-status', 'indexing');
+    expect(screen.getByTestId('lsp-status-label')).toHaveAttribute(
+      'title',
+      'Rust Analyzer (indexing: loading metadata)',
     );
 
     act(() => {
@@ -1105,7 +1163,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       });
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open problems panel' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Problems/i }));
     expect(await screen.findByText(/unused variable: `draft`/i)).toBeInTheDocument();
 
     // Trigger Format Rust File from the Inspector panel.
@@ -1185,7 +1243,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
         projectName: 'hello-axum',
         template: 'axum',
       });
-      expect(screen.getByTestId('titlebar')).toHaveTextContent('hello-axum');
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('hello-axum');
     });
   });
 
@@ -1195,7 +1253,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
-      expect(screen.getByTestId('statusbar-backend')).toHaveTextContent('Cargo');
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
+      expect(screen.getByTestId('statusbar')).toHaveAttribute('data-backend', 'cargo');
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle right inspector panel' }));
@@ -1224,6 +1283,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     fireEvent.click(screen.getByTestId('backend-rusturbo'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('set_compiler_backend', { backend: 'rusturbo' });
+      expect(screen.getByTestId('statusbar')).toHaveAttribute('data-backend', 'rusturbo');
       expect(screen.getByTestId('statusbar-backend')).toHaveTextContent('Rusturbo');
     });
 
@@ -1245,7 +1305,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
     await waitFor(() => {
-      expect(screen.getByTestId('file-tree')).toBeInTheDocument();
+      expect(screen.getByTestId('file-tree')).toHaveTextContent('demo');
     });
 
     // Search across workspace and click match to jump to src/lib.rs.
@@ -1288,7 +1348,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
         'pty_spawn',
         expect.objectContaining({ cols: expect.any(Number), rows: expect.any(Number) }),
       );
-      expect(screen.getByTestId('terminal-view')).toHaveTextContent('Shell session #7');
+      expect(screen.getByTestId('terminal-view')).toHaveAttribute('data-session-id', '7');
+      expect(xtermWrites.join('')).toContain('$ ');
     });
 
     act(() => {
@@ -1296,6 +1357,44 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     });
     await waitFor(() => {
       expect(ptyInputs).toContain('cargo --version\r');
+    });
+  });
+
+  it('keeps Arena Assistant and Extensions views strictly UI-only without backend IPC calls', () => {
+    render(<App />);
+
+    // Arena Assistant interactions stay purely in UI state
+    fireEvent.click(screen.getByRole('button', { name: 'Explain this code' }));
+    expect(screen.getByLabelText('Ask anything about your code')).toHaveValue('Explain this code');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(screen.getByLabelText('Ask anything about your code')).toHaveValue('');
+
+    // Extensions view renders static UI cards without invoking backend commands
+    fireEvent.click(screen.getByRole('button', { name: 'Extensions' }));
+    const extensionsView = screen.getByTestId('extensions-view');
+    expect(extensionsView).toHaveTextContent('rust-analyzer');
+    expect(extensionsView).toHaveTextContent('Even Better TOML');
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('opens Command Palette via Ctrl+K or TitleBar search and switches sample files', async () => {
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+    const palette = await screen.findByTestId('command-palette');
+    expect(palette).toBeInTheDocument();
+
+    const searchInput = screen.getByLabelText('Search files or commands');
+    fireEvent.change(searchInput, { target: { value: 'Cargo.toml' } });
+    fireEvent.click(within(palette).getByRole('button', { name: /Cargo\.toml/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('command-palette')).not.toBeInTheDocument();
+      expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
+        'data-active-path',
+        'Cargo.toml',
+      );
     });
   });
 });
