@@ -1,5 +1,8 @@
 import {
+  CheckCircle2,
+  FlaskConical,
   FolderOpen,
+  Hammer,
   Maximize2,
   Minimize2,
   PanelBottom,
@@ -7,13 +10,17 @@ import {
   PanelRight,
   Play,
   Save,
+  Square,
 } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import type { ThemeMode } from '../types/preferences';
+import type { RunnerAction } from '../types/runner';
 
 interface TitleBarProps {
   workspaceName: string | null;
   hasUnsavedActiveTab: boolean;
+  isRunning: boolean;
+  activeRunAction: RunnerAction | null;
   themeMode: ThemeMode;
   sidebarOpen: boolean;
   bottomPanelOpen: boolean;
@@ -22,6 +29,8 @@ interface TitleBarProps {
   isNarrow: boolean;
   onOpenFolder: () => void;
   onSaveActive: () => void;
+  onRunAction: (action: RunnerAction) => void;
+  onStopRun: () => void;
   onThemeChange: (mode: ThemeMode) => void;
   onThemeCycle: () => void;
   onToggleSidebar: () => void;
@@ -33,6 +42,8 @@ interface TitleBarProps {
 export function TitleBar({
   workspaceName,
   hasUnsavedActiveTab,
+  isRunning,
+  activeRunAction,
   themeMode,
   sidebarOpen,
   bottomPanelOpen,
@@ -41,6 +52,8 @@ export function TitleBar({
   isNarrow,
   onOpenFolder,
   onSaveActive,
+  onRunAction,
+  onStopRun,
   onThemeChange,
   onThemeCycle,
   onToggleSidebar,
@@ -48,6 +61,7 @@ export function TitleBar({
   onToggleInspector,
   onToggleFullscreen,
 }: TitleBarProps) {
+  const hasWorkspace = workspaceName !== null;
   return (
     <header
       className="flex h-[var(--titlebar-height)] shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 select-none"
@@ -98,15 +112,91 @@ export function TitleBar({
         )}
 
         {!isNarrow && (
-          <button
-            type="button"
-            disabled
-            title="Build & Run arrives in Phase 4"
-            className="mr-1 inline-flex h-7 cursor-not-allowed items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 text-xs font-medium text-[var(--text-muted)] opacity-60"
+          <div
+            className="mr-1 flex items-center gap-0.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-0.5"
+            aria-label="Cargo build actions"
           >
-            <Play className="h-3 w-3" />
-            <span>Run</span>
-          </button>
+            <button
+              type="button"
+              disabled={!hasWorkspace}
+              onClick={() => onRunAction('run')}
+              title={hasWorkspace ? 'Cargo Run (F5)' : 'Open a Cargo project first'}
+              aria-label="Run project"
+              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-medium transition-colors ${
+                !hasWorkspace
+                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
+                  : isRunning && activeRunAction === 'run'
+                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+              }`}
+            >
+              <Play className="h-3 w-3 text-[var(--status-ok)]" />
+              <span>Run</span>
+            </button>
+            <button
+              type="button"
+              disabled={!hasWorkspace}
+              onClick={() => onRunAction('build')}
+              title="Cargo Build (Ctrl/Cmd+Shift+B)"
+              aria-label="Build project"
+              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
+                !hasWorkspace
+                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
+                  : isRunning && activeRunAction === 'build'
+                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Hammer className="h-3 w-3" />
+              <span>Build</span>
+            </button>
+            <button
+              type="button"
+              disabled={!hasWorkspace}
+              onClick={() => onRunAction('check')}
+              title="Cargo Check"
+              aria-label="Check project"
+              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
+                !hasWorkspace
+                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
+                  : isRunning && activeRunAction === 'check'
+                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              <span>Check</span>
+            </button>
+            <button
+              type="button"
+              disabled={!hasWorkspace}
+              onClick={() => onRunAction('test')}
+              title="Cargo Test"
+              aria-label="Test project"
+              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
+                !hasWorkspace
+                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
+                  : isRunning && activeRunAction === 'test'
+                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <FlaskConical className="h-3 w-3" />
+              <span>Test</span>
+            </button>
+            {isRunning && (
+              <button
+                type="button"
+                onClick={onStopRun}
+                title="Stop running process (Shift+F5)"
+                aria-label="Stop running process"
+                className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--status-err)]/15 px-2 text-xs font-medium text-[var(--status-err)] transition-colors hover:bg-[var(--status-err)]/25"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                <span>Stop</span>
+              </button>
+            )}
+          </div>
         )}
 
         <div className="flex items-center gap-0.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-0.5">

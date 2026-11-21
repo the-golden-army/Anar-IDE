@@ -17,6 +17,41 @@ pub enum CompilerBackend {
     Rusturbo,
 }
 
+/// Severity level for compiler or LSP diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+    Note,
+    Help,
+}
+
+/// Source code location associated with a diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticSpan {
+    pub file_name: String,
+    pub line_start: u32,
+    pub line_end: u32,
+    pub column_start: u32,
+    pub column_end: u32,
+    pub is_primary: bool,
+    pub label: Option<String>,
+}
+
+/// Normalized compiler or language-server diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticItem {
+    pub severity: DiagnosticSeverity,
+    pub code: Option<String>,
+    pub message: String,
+    pub rendered: Option<String>,
+    pub primary_span: Option<DiagnosticSpan>,
+    pub spans: Vec<DiagnosticSpan>,
+}
+
 /// Supported Rust frameworks detected and profiled by Anar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

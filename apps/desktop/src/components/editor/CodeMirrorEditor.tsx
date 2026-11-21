@@ -22,6 +22,7 @@ export interface CodeMirrorEditorHandle {
   markSaved: (relativePath: string) => void;
   replaceDocumentText: (relativePath: string, content: string, isLargeFile: boolean) => void;
   dropTabBuffer: (relativePath: string) => void;
+  revealLocation: (line: number, col: number) => void;
   focus: () => void;
 }
 
@@ -181,6 +182,21 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
         },
         dropTabBuffer(targetPath: string) {
           buffersRef.current.delete(targetPath);
+        },
+        revealLocation(line: number, col: number) {
+          const view = viewRef.current;
+          if (!view) {
+            return;
+          }
+          const clampedLine = Math.max(1, Math.min(line, view.state.doc.lines));
+          const lineInfo = view.state.doc.line(clampedLine);
+          const clampedCol = Math.max(1, col);
+          const pos = Math.min(lineInfo.from + clampedCol - 1, lineInfo.to);
+          view.dispatch({
+            selection: { anchor: pos },
+            effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+          });
+          view.focus();
         },
         focus() {
           viewRef.current?.focus();
