@@ -3,8 +3,8 @@
 use crate::protocol::{
     parse_completion_response, parse_definition_response, parse_formatting_response,
     parse_hover_response, parse_publish_diagnostics, parse_work_done_progress, read_lsp_message,
-    write_lsp_message, LspCompletionItem, LspDiagnosticsEvent, LspHoverInfo, LspLocation,
-    LspStatus, LspStatusEvent, LspTextEdit,
+    write_lsp_message, LspCompletionItem, LspDiagnosticsEvent, LspHoverInfo, LspLocation, LspStatus,
+    LspStatusEvent, LspTextEdit,
 };
 use crate::uri::path_to_file_uri;
 use serde_json::{json, Value};
