@@ -3,6 +3,7 @@ import {
   DEFAULT_PREFERENCES,
   sanitizeLayout,
   type AppPreferences,
+  type CompilerBackend,
   type LayoutState,
   type RecentWorkspace,
   type ThemeMode,
@@ -42,9 +43,12 @@ export function readLocalPreferences(): AppPreferences {
       parsed.theme === 'dark' || parsed.theme === 'light' || parsed.theme === 'system'
         ? parsed.theme
         : 'system';
+    const compilerBackend: CompilerBackend =
+      parsed.compilerBackend === 'rusturbo' ? 'rusturbo' : 'cargo';
     return {
       version: 1,
       theme,
+      compilerBackend,
       layout: sanitizeLayout(parsed.layout),
       recentWorkspaces: sanitizeRecents(parsed.recentWorkspaces),
     };
@@ -71,6 +75,7 @@ export async function fetchPreferences(): Promise<AppPreferences> {
     const normalized: AppPreferences = {
       version: 1,
       theme: prefs.theme,
+      compilerBackend: prefs.compilerBackend === 'rusturbo' ? 'rusturbo' : 'cargo',
       layout: sanitizeLayout(prefs.layout),
       recentWorkspaces: sanitizeRecents(prefs.recentWorkspaces),
     };
@@ -78,6 +83,23 @@ export async function fetchPreferences(): Promise<AppPreferences> {
     return normalized;
   } catch {
     return readLocalPreferences();
+  }
+}
+
+export async function persistCompilerBackend(backend: CompilerBackend): Promise<AppPreferences> {
+  const local = readLocalPreferences();
+  const optimistic: AppPreferences = { ...local, compilerBackend: backend };
+  writeLocalPreferences(optimistic);
+
+  if (!isTauriRuntime()) {
+    return optimistic;
+  }
+  try {
+    const saved = await invoke<AppPreferences>('set_compiler_backend', { backend });
+    writeLocalPreferences(saved);
+    return saved;
+  } catch {
+    return optimistic;
   }
 }
 

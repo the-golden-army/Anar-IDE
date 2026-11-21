@@ -39,12 +39,26 @@ import {
   renameWorkspaceEntry,
   saveWorkspaceFile,
 } from './services/workspaceClient';
-import { sendRunStdin, startCargoRun, stopCargoRun } from './services/runnerClient';
+import {
+  analyzeRusturbo,
+  getRusturboStatus,
+  initRusturboConfig,
+  sendRunStdin,
+  startCargoRun,
+  stopCargoRun,
+} from './services/runnerClient';
 import { getFullscreenState, toggleFullscreen } from './services/windowClient';
 import type { WorkspaceFrameworkReport } from './types/frameworks';
 import type { LspLocation, LspStatusEvent } from './types/lsp';
 import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
-import type { DiagnosticItem, OutputLine, RunnerAction, RunnerEvent } from './types/runner';
+import type {
+  DiagnosticItem,
+  OutputLine,
+  RunnerAction,
+  RunnerEvent,
+  RusturboAnalysis,
+  RusturboStatus,
+} from './types/runner';
 import type { EditorTab, FileEntry, WorkspaceFsEvent, WorkspaceInfo } from './types/workspace';
 
 function formatError(err: unknown): string {
@@ -59,8 +73,14 @@ function parentDirOf(relPath: string): string {
 }
 
 export function App() {
-  const { preferences, resolvedTheme, setThemeMode, cycleThemeMode, updateLayout } =
-    usePreferences();
+  const {
+    preferences,
+    resolvedTheme,
+    setThemeMode,
+    cycleThemeMode,
+    setCompilerBackend,
+    updateLayout,
+  } = usePreferences();
   const { isCompact, isNarrow } = useCompactViewport();
   const { layout } = preferences;
 
@@ -88,6 +108,9 @@ export function App() {
   const [frameworkReport, setFrameworkReport] = useState<WorkspaceFrameworkReport | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
+  const [rusturboStatus, setRusturboStatus] = useState<RusturboStatus | null>(null);
+  const [rusturboAnalysis, setRusturboAnalysis] = useState<RusturboAnalysis | null>(null);
+  const [rusturboBusy, setRusturboBusy] = useState(false);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const initialContentsRef = useRef<Map<string, string>>(new Map());
@@ -138,6 +161,21 @@ export function App() {
     }
   }, []);
 
+  const refreshRusturboStatus = useCallback(async () => {
+    try {
+      const status = await getRusturboStatus();
+      setRusturboStatus(status);
+    } catch {
+      setRusturboStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isTauriRuntime()) {
+      void refreshRusturboStatus();
+    }
+  }, [refreshRusturboStatus]);
+
   const hydrateWorkspace = useCallback(
     async (info: WorkspaceInfo) => {
       void stopCargoRun().catch(() => {});
@@ -157,6 +195,7 @@ export function App() {
       setLastExitSummary(null);
       setFrameworkReport(null);
       setSelectedProfileId(null);
+      setRusturboAnalysis(null);
       activeRunIdRef.current = null;
       initialContentsRef.current.clear();
 
@@ -178,11 +217,12 @@ export function App() {
       setExpandedDirs(nextExpanded);
 
       void refreshFrameworks();
+      void refreshRusturboStatus();
 
       const updatedPrefs = await fetchPreferences();
       setRecentWorkspaces(updatedPrefs.recentWorkspaces);
     },
-    [refreshFrameworks],
+    [refreshFrameworks, refreshRusturboStatus],
   );
 
   const handleOpenFolder = useCallback(async () => {
@@ -289,6 +329,9 @@ export function App() {
         if (targetPath.endsWith('Cargo.toml') || targetPath.endsWith('Cargo.lock')) {
           void refreshFrameworks();
         }
+        if (targetPath.endsWith('rusturbo.toml')) {
+          void refreshRusturboStatus();
+        }
         setTabs((prev) =>
           prev.map((t) =>
             t.relativePath === targetPath
@@ -308,7 +351,7 @@ export function App() {
         setErrorBanner(formatError(err));
       }
     },
-    [refreshFrameworks, showTransientStatus],
+    [refreshFrameworks, refreshRusturboStatus, showTransientStatus],
   );
 
   const handleReloadFromDisk = useCallback(
@@ -459,6 +502,9 @@ export function App() {
       ) {
         void refreshFrameworks();
       }
+      if (events.some((evt) => evt.relativePath.endsWith('rusturbo.toml'))) {
+        void refreshRusturboStatus();
+      }
 
       for (const evt of events) {
         const openTab = tabsRef.current.find((t) => t.relativePath === evt.relativePath);
@@ -497,7 +543,7 @@ export function App() {
       disposed = true;
       if (unlisten) unlisten();
     };
-  }, [handleReloadFromDisk, refreshDirectory, refreshFrameworks]);
+  }, [handleReloadFromDisk, refreshDirectory, refreshFrameworks, refreshRusturboStatus]);
 
   const handleDirtyChange = useCallback((relPath: string, dirty: boolean) => {
     setTabs((prev) =>
@@ -594,32 +640,37 @@ export function App() {
       }));
 
       try {
-        const runId = await startCargoRun(action, (event: RunnerEvent) => {
-          if (activeRunIdRef.current !== null && event.runId !== activeRunIdRef.current) {
-            return;
-          }
-          if (event.type === 'started') {
-            activeRunIdRef.current = event.runId;
-            appendOutput('system', `$ ${event.command}`);
-          } else if (event.type === 'output') {
-            appendOutput(event.stream, event.line);
-          } else if (event.type === 'diagnostic') {
-            setCargoDiagnostics((prev) => [...prev, event.diagnostic]);
-            const rendered = event.diagnostic.rendered?.trimEnd();
-            if (rendered) {
-              appendOutput('stderr', rendered);
+        const backend = preferences.compilerBackend;
+        const runId = await startCargoRun(
+          action,
+          (event: RunnerEvent) => {
+            if (activeRunIdRef.current !== null && event.runId !== activeRunIdRef.current) {
+              return;
             }
-          } else if (event.type === 'finished') {
-            setIsRunning(false);
-            const seconds = (event.durationMs / 1000).toFixed(2);
-            const summary = event.cancelled
-              ? `Cancelled after ${seconds}s`
-              : `Exited (${event.exitCode ?? '?'}) in ${seconds}s`;
-            setLastExitSummary(summary);
-            appendOutput('system', summary);
-            showTransientStatus(`cargo ${event.action}: ${summary}`);
-          }
-        });
+            if (event.type === 'started') {
+              activeRunIdRef.current = event.runId;
+              appendOutput('system', `$ ${event.command}`);
+            } else if (event.type === 'output') {
+              appendOutput(event.stream, event.line);
+            } else if (event.type === 'diagnostic') {
+              setCargoDiagnostics((prev) => [...prev, event.diagnostic]);
+              const rendered = event.diagnostic.rendered?.trimEnd();
+              if (rendered) {
+                appendOutput('stderr', rendered);
+              }
+            } else if (event.type === 'finished') {
+              setIsRunning(false);
+              const seconds = (event.durationMs / 1000).toFixed(2);
+              const summary = event.cancelled
+                ? `Cancelled after ${seconds}s`
+                : `Exited (${event.exitCode ?? '?'}) in ${seconds}s`;
+              setLastExitSummary(summary);
+              appendOutput('system', summary);
+              showTransientStatus(`${backend} ${event.action}: ${summary}`);
+            }
+          },
+          backend,
+        );
         activeRunIdRef.current = runId;
       } catch (err) {
         setIsRunning(false);
@@ -627,7 +678,7 @@ export function App() {
         setErrorBanner(formatError(err));
       }
     },
-    [appendOutput, handleSaveTab, showTransientStatus, updateLayout],
+    [appendOutput, handleSaveTab, preferences.compilerBackend, showTransientStatus, updateLayout],
   );
 
   const handleRunProfile = useCallback(
@@ -774,6 +825,37 @@ export function App() {
       showTransientStatus('Formatted Rust document');
     }
   }, [showTransientStatus]);
+
+  const handleAnalyzeRusturbo = useCallback(async () => {
+    if (!workspaceRef.current) return;
+    setRusturboBusy(true);
+    setErrorBanner(null);
+    try {
+      const report = await analyzeRusturbo();
+      setRusturboAnalysis(report);
+      showTransientStatus('Rusturbo analysis complete');
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    } finally {
+      setRusturboBusy(false);
+    }
+  }, [showTransientStatus]);
+
+  const handleInitRusturboConfig = useCallback(async () => {
+    if (!workspaceRef.current) return;
+    setRusturboBusy(true);
+    setErrorBanner(null);
+    try {
+      const updated = await initRusturboConfig('auto', 'balanced');
+      setRusturboStatus(updated);
+      await handleRefreshExplorer();
+      showTransientStatus('Initialized rusturbo.toml');
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    } finally {
+      setRusturboBusy(false);
+    }
+  }, [handleRefreshExplorer, showTransientStatus]);
 
   useEffect(() => {
     const timers = lspChangeTimersRef.current;
@@ -1028,6 +1110,7 @@ export function App() {
         hasUnsavedActiveTab={Boolean(activeTab?.dirty)}
         isRunning={isRunning}
         activeRunAction={activeRunAction}
+        compilerBackend={preferences.compilerBackend}
         themeMode={preferences.theme}
         sidebarOpen={layout.sidebarOpen}
         bottomPanelOpen={layout.bottomPanelOpen}
@@ -1202,6 +1285,10 @@ export function App() {
           width={layout.inspectorWidth}
           isCompact={isCompact}
           lspStatus={lspStatus}
+          compilerBackend={preferences.compilerBackend}
+          rusturboStatus={rusturboStatus}
+          rusturboAnalysis={rusturboAnalysis}
+          rusturboBusy={rusturboBusy}
           frameworkReport={frameworkReport}
           selectedProfileId={selectedProfileId}
           isRunning={isRunning}
@@ -1214,6 +1301,9 @@ export function App() {
           }
           onRestartLsp={() => void handleRestartLsp()}
           onFormatDocument={() => void handleFormatDocument()}
+          onSelectCompilerBackend={setCompilerBackend}
+          onAnalyzeRusturbo={() => void handleAnalyzeRusturbo()}
+          onInitRusturboConfig={() => void handleInitRusturboConfig()}
           onSelectProfile={(profileId) => setSelectedProfileId(profileId)}
           onRunProfile={(profileId) => void handleRunProfile(profileId)}
           onClose={() => updateLayout((prev) => ({ ...prev, inspectorOpen: false }))}
@@ -1225,6 +1315,7 @@ export function App() {
         activeTab={activeTab}
         statusMessage={statusMessage}
         isRunning={isRunning}
+        compilerBackend={preferences.compilerBackend}
         lspStatus={lspStatus}
         detectedFrameworks={frameworkReport?.detected ?? []}
         errorCount={errorCount}

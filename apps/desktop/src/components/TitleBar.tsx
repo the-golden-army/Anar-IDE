@@ -13,7 +13,7 @@ import {
   Square,
 } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
-import type { ThemeMode } from '../types/preferences';
+import type { CompilerBackend, ThemeMode } from '../types/preferences';
 import type { RunnerAction } from '../types/runner';
 
 interface TitleBarProps {
@@ -21,6 +21,7 @@ interface TitleBarProps {
   hasUnsavedActiveTab: boolean;
   isRunning: boolean;
   activeRunAction: RunnerAction | null;
+  compilerBackend: CompilerBackend;
   themeMode: ThemeMode;
   sidebarOpen: boolean;
   bottomPanelOpen: boolean;
@@ -44,6 +45,7 @@ export function TitleBar({
   hasUnsavedActiveTab,
   isRunning,
   activeRunAction,
+  compilerBackend,
   themeMode,
   sidebarOpen,
   bottomPanelOpen,
@@ -120,7 +122,11 @@ export function TitleBar({
               type="button"
               disabled={!hasWorkspace}
               onClick={() => onRunAction('run')}
-              title={hasWorkspace ? 'Cargo Run (F5)' : 'Open a Cargo project first'}
+              title={
+                hasWorkspace
+                  ? `${compilerBackend === 'rusturbo' ? 'Rusturbo' : 'Cargo'} Run (F5)`
+                  : 'Open a Cargo project first'
+              }
               aria-label="Run project"
               className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-medium transition-colors ${
                 !hasWorkspace
@@ -137,7 +143,7 @@ export function TitleBar({
               type="button"
               disabled={!hasWorkspace}
               onClick={() => onRunAction('build')}
-              title="Cargo Build (Ctrl/Cmd+Shift+B)"
+              title={`${compilerBackend === 'rusturbo' ? 'Rusturbo' : 'Cargo'} Build (Ctrl/Cmd+Shift+B)`}
               aria-label="Build project"
               className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
                 !hasWorkspace

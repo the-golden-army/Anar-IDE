@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CodeMirror 6 language intelligence (`@codemirror/lint` inline diagnostic squiggles & gutter markers, `@codemirror/autocomplete` completions, `hoverTooltip` type/doc popups, `F12` / `Ctrl/Cmd+Click` Go-to-Definition, `Shift+Alt+F` `rustfmt` formatting) plus live `rust-analyzer` status & restart controls in `StatusBar` and `InspectorPanel`.
 - `anar-frameworks` Phase 6 framework detector (`Cargo.toml`, workspace members, `src-tauri/Cargo.toml`, `Cargo.lock` across `axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, and `clap`), tailored run profiles (`dx serve`, `cargo leptos watch`, `trunk serve`, `cargo tauri dev`, Bevy dynamic linking, Clap CLI, and server port/tool checks), and 11 project scaffolding templates.
 - Tauri framework & template commands (`detect_workspace_frameworks`, `list_project_templates`, `pick_parent_folder`, `create_project_from_template`, `start_profile_run`) plus `NewProjectModal`, live **Framework Profile** / **Run Profiles** controls in `InspectorPanel`, and framework badges in `StatusBar`.
+- `anar-core::preferences` persistent `compilerBackend` (`Cargo` | `Rusturbo`) with `set_compiler_backend` Tauri command.
+- `anar-runner::rusturbo` Phase 7 Rusturbo integration: PATH/version probing, `rusturbo.toml` inspection, `rusturbo init` & `rusturbo analyze --json` parsing, `NO_COLOR=1` subprocess execution for `build`/`run` with automatic Cargo fallback for `check`/`test`, and fallback `rustc` stderr diagnostic parsing.
+- **Compiler Backend** switcher (`Cargo` / `Rusturbo`), `Analyze`, `Init rusturbo.toml`, and dependency-graph/linker/sccache/cache readout in `InspectorPanel`, plus live backend status in `StatusBar` and `TitleBar`.
 
 ## [0.1.0] - 2026-11-21
 

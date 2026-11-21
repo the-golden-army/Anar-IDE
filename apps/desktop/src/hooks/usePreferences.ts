@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchPreferences,
   isTauriRuntime,
+  persistCompilerBackend,
   persistLayoutState,
   persistThemeMode,
   readLocalPreferences,
@@ -9,6 +10,7 @@ import {
 import {
   sanitizeLayout,
   type AppPreferences,
+  type CompilerBackend,
   type LayoutState,
   type ResolvedTheme,
   type ThemeMode,
@@ -54,6 +56,7 @@ export interface UsePreferencesResult {
   loaded: boolean;
   setThemeMode: (mode: ThemeMode) => void;
   cycleThemeMode: () => void;
+  setCompilerBackend: (backend: CompilerBackend) => void;
   updateLayout: (updater: (prev: LayoutState) => LayoutState) => void;
 }
 
@@ -135,6 +138,12 @@ export function usePreferences(): UsePreferencesResult {
     setThemeMode(next);
   }, [preferences.theme, setThemeMode]);
 
+  const setCompilerBackend = useCallback((backend: CompilerBackend) => {
+    userMutatedRef.current = true;
+    setPreferences((prev) => ({ ...prev, compilerBackend: backend }));
+    void persistCompilerBackend(backend);
+  }, []);
+
   const updateLayout = useCallback((updater: (prev: LayoutState) => LayoutState) => {
     userMutatedRef.current = true;
     setPreferences((prev) => {
@@ -155,6 +164,7 @@ export function usePreferences(): UsePreferencesResult {
     loaded,
     setThemeMode,
     cycleThemeMode,
+    setCompilerBackend,
     updateLayout,
   };
 }

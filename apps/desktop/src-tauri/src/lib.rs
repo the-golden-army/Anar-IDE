@@ -10,7 +10,11 @@ use anar_frameworks::{
 use anar_lsp::{
     LspCompletionItem, LspHoverInfo, LspLocation, LspManager, LspStatusEvent, LspTextEdit,
 };
-use anar_runner::{RunnerAction, RunnerEvent, RunnerManager};
+use anar_runner::{
+    analyze_workspace_with_rusturbo, init_rusturbo_config as init_rusturbo_in_dir,
+    probe_rusturbo_status, RunnerAction, RunnerEvent, RunnerManager, RusturboAnalysis,
+    RusturboStatus,
+};
 use anar_workspace::{
     create_directory, create_file, delete_entry, list_directory, open_workspace, read_document,
     rename_entry, save_document, DocumentContent, FileEntry, SaveResult, WorkspaceInfo,
@@ -72,6 +76,19 @@ impl PreferencesState {
             .map_err(|_| String::from("preferences lock poisoned"))?;
         let mut next = guard.clone();
         next.layout = layout;
+        let saved = save_preferences(&self.path, &next)?;
+        *guard = saved.clone();
+        Ok(saved)
+    }
+
+    /// Updates the active compiler backend and persists to disk.
+    pub fn set_compiler_backend(&self, backend: CompilerBackend) -> Result<AppPreferences, String> {
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| String::from("preferences lock poisoned"))?;
+        let mut next = guard.clone();
+        next.compiler_backend = backend;
         let saved = save_preferences(&self.path, &next)?;
         *guard = saved.clone();
         Ok(saved)
@@ -223,6 +240,14 @@ fn update_layout_state(
 }
 
 #[tauri::command]
+fn set_compiler_backend(
+    backend: CompilerBackend,
+    state: tauri::State<'_, PreferencesState>,
+) -> Result<AppPreferences, String> {
+    state.set_compiler_backend(backend)
+}
+
+#[tauri::command]
 async fn pick_workspace_folder(
     app: AppHandle,
     ws_state: tauri::State<'_, WorkspaceState>,
@@ -355,16 +380,58 @@ fn toggle_window_fullscreen(window: tauri::WebviewWindow) -> Result<bool, String
 #[tauri::command]
 fn start_cargo_run(
     action: RunnerAction,
+    backend: Option<CompilerBackend>,
     on_event: tauri::ipc::Channel<RunnerEvent>,
     ws_state: tauri::State<'_, WorkspaceState>,
+    prefs_state: tauri::State<'_, PreferencesState>,
     runner_state: tauri::State<'_, RunnerState>,
 ) -> Result<u64, String> {
     let scope = ws_state.scope()?;
+    let active_backend = match backend {
+        Some(b) => b,
+        None => prefs_state.current()?.compiler_backend,
+    };
     runner_state
         .0
-        .start_cargo_run(scope.root(), action, move |evt| {
+        .start_run_with_backend(scope.root(), action, active_backend, move |evt| {
             let _ = on_event.send(evt);
         })
+}
+
+#[tauri::command]
+async fn get_rusturbo_status(
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<RusturboStatus, String> {
+    let root = ws_state.scope().ok().map(|s| s.root().to_path_buf());
+    tauri::async_runtime::spawn_blocking(move || probe_rusturbo_status(root.as_deref()))
+        .await
+        .map_err(|err| format!("rusturbo probe task failed: {err}"))
+}
+
+#[tauri::command]
+async fn analyze_rusturbo(
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<RusturboAnalysis, String> {
+    let scope = ws_state.scope()?;
+    let root = scope.root().to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || analyze_workspace_with_rusturbo(&root))
+        .await
+        .map_err(|err| format!("rusturbo analyze task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn init_rusturbo_config(
+    preset: Option<String>,
+    profile: Option<String>,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<RusturboStatus, String> {
+    let scope = ws_state.scope()?;
+    let root = scope.root().to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || {
+        init_rusturbo_in_dir(&root, preset.as_deref(), profile.as_deref())
+    })
+    .await
+    .map_err(|err| format!("rusturbo init task failed: {err}"))?
 }
 
 #[tauri::command]
@@ -594,6 +661,7 @@ pub fn run() {
             get_preferences,
             set_theme_mode,
             update_layout_state,
+            set_compiler_backend,
             pick_workspace_folder,
             open_workspace_folder,
             list_workspace_dir,
@@ -608,6 +676,9 @@ pub fn run() {
             start_cargo_run,
             stop_cargo_run,
             send_run_stdin,
+            get_rusturbo_status,
+            analyze_rusturbo,
+            init_rusturbo_config,
             lsp_get_status,
             lsp_restart,
             lsp_did_open,

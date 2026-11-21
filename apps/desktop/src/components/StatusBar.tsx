@@ -2,13 +2,14 @@ import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { languageLabelFor } from './editor/codemirrorTheme';
 import type { DetectedFramework } from '../types/frameworks';
 import type { LspStatusEvent } from '../types/lsp';
-import type { ResolvedTheme, ThemeMode } from '../types/preferences';
+import type { CompilerBackend, ResolvedTheme, ThemeMode } from '../types/preferences';
 import type { EditorTab } from '../types/workspace';
 
 interface StatusBarProps {
   activeTab: EditorTab | null;
   statusMessage: string | null;
   isRunning: boolean;
+  compilerBackend: CompilerBackend;
   lspStatus: LspStatusEvent;
   detectedFrameworks: DetectedFramework[];
   errorCount: number;
@@ -28,6 +29,7 @@ export function StatusBar({
   activeTab,
   statusMessage,
   isRunning,
+  compilerBackend,
   lspStatus,
   detectedFrameworks,
   errorCount,
@@ -57,14 +59,26 @@ export function StatusBar({
       className="flex h-[var(--statusbar-height)] shrink-0 items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 text-[11px] text-[var(--text-secondary)] select-none"
     >
       <div className="flex min-w-0 items-center gap-3">
-        <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-[var(--text-primary)]">
+        <span
+          data-testid="statusbar-backend"
+          title={
+            compilerBackend === 'rusturbo'
+              ? 'Compiler backend: Rusturbo (Build & Run accelerated; Check & Test via Cargo)'
+              : 'Compiler backend: Cargo'
+          }
+          className="inline-flex shrink-0 items-center gap-1.5 font-medium text-[var(--text-primary)]"
+        >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              isRunning ? 'animate-pulse bg-[var(--accent)]' : 'bg-[var(--status-ok)]'
+              isRunning
+                ? 'animate-pulse bg-[var(--accent)]'
+                : compilerBackend === 'rusturbo'
+                  ? 'bg-[var(--accent)]'
+                  : 'bg-[var(--status-ok)]'
             }`}
             aria-hidden="true"
           />
-          <span>Cargo</span>
+          <span>{compilerBackend === 'rusturbo' ? 'Rusturbo' : 'Cargo'}</span>
         </span>
 
         {!isNarrow && detectedFrameworks.length > 0 && (

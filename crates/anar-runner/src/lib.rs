@@ -1,14 +1,19 @@
 //! Build and run pipeline for Cargo and Rusturbo backends.
 //!
-//! Phase 4 implements streaming Cargo execution, `--message-format=json`
-//! diagnostic parsing, interactive stdin forwarding, and cross-platform
-//! process-tree termination. Rusturbo acceleration arrives in Phase 7.
+//! Supports streaming Cargo execution, `--message-format=json` diagnostic parsing,
+//! interactive stdin forwarding, cross-platform process-tree termination, and
+//! Rusturbo (`v0.1.2`) CLI probing, `analyze --json`, `init`, and build/run delegation.
 
 pub mod diagnostics;
 pub mod process;
+pub mod rusturbo;
 
 pub use diagnostics::{normalize_diagnostic_path, parse_cargo_stdout_line, ParsedCargoLine};
 pub use process::RunnerManager;
+pub use rusturbo::{
+    analyze_workspace_with_rusturbo, find_rusturbo_binary, init_rusturbo_config,
+    probe_rusturbo_status, RusturboAnalysis, RusturboStatus,
+};
 
 use anar_core::{CompilerBackend, DiagnosticItem};
 use serde::{Deserialize, Serialize};

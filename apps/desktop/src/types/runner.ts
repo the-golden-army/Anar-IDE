@@ -55,3 +55,31 @@ export interface OutputLine {
   stream: OutputStream | 'system';
   text: string;
 }
+
+export interface RusturboStatus {
+  available: boolean;
+  binaryPath: string | null;
+  version: string | null;
+  configExists: boolean;
+  configuredPreset: string | null;
+  sharedTargets: boolean | null;
+  linkerMode: string | null;
+  supportsCheck: boolean;
+  supportsTest: boolean;
+  supportsJsonDiagnostics: boolean;
+}
+
+export interface RusturboAnalysis {
+  rusturboVersion: string | null;
+  configFound: boolean;
+  linkerSelected: string | null;
+  sccacheActive: boolean | null;
+  sccachePath: string | null;
+  packageCount: number | null;
+  edgeCount: number | null;
+  duplicateCount: number | null;
+  cacheDecision: string | null;
+  cacheReuse: string | null;
+  cacheKey: string | null;
+  advice: string[];
+}

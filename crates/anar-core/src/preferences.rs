@@ -3,6 +3,7 @@
 //! Kept free of Tauri dependencies so unit tests run standalone and any host
 //! (desktop app, CLI, or tests) can load and validate preferences identically.
 
+use crate::CompilerBackend;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -118,6 +119,7 @@ impl LayoutState {
 pub struct AppPreferences {
     pub version: u32,
     pub theme: ThemeMode,
+    pub compiler_backend: CompilerBackend,
     pub layout: LayoutState,
     pub recent_workspaces: Vec<RecentWorkspace>,
 }
@@ -127,6 +129,7 @@ impl Default for AppPreferences {
         Self {
             version: PREFERENCES_SCHEMA_VERSION,
             theme: ThemeMode::default(),
+            compiler_backend: CompilerBackend::default(),
             layout: LayoutState::default(),
             recent_workspaces: Vec::new(),
         }
@@ -255,6 +258,7 @@ mod tests {
         let mut prefs = AppPreferences {
             version: 1,
             theme: ThemeMode::Light,
+            compiler_backend: CompilerBackend::Rusturbo,
             layout: LayoutState {
                 sidebar_open: false,
                 sidebar_width: 320,
@@ -300,6 +304,7 @@ mod tests {
 
         let loaded = load_preferences(&path);
         assert_eq!(loaded.theme, ThemeMode::Dark);
+        assert_eq!(loaded.compiler_backend, CompilerBackend::Cargo);
         assert!(loaded.layout.sidebar_open);
         assert_eq!(loaded.layout.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
         assert_eq!(loaded.layout.zoom_percent, DEFAULT_ZOOM_PERCENT);
