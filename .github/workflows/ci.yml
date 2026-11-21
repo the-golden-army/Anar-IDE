@@ -76,7 +76,7 @@ jobs:
         run: |
           if ! cargo fmt --all -- --check; then
             if [ "${{ runner.os }}" = "Linux" ]; then
-              DIFF=$(cargo fmt --all -- --check 2>&1 | head -n 60 | sed ':a;N;$!ba;s/\n/ | /g')
+              DIFF=$(cargo fmt --all -- --check 2>&1 | head -n 60 | sed ':a;N;$!ba;s/\n/ | /g' || true)
               for i in 0 1000 2000; do
                 CHUNK="${DIFF:$i:1000}"
                 if [ -n "$CHUNK" ]; then

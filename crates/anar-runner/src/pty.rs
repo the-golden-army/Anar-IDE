@@ -119,8 +119,10 @@ impl PtyManager {
                 .ok()
                 .and_then(|mut guard| guard.remove(&session_id));
 
-            let exit_code = removed
-                .and_then(|mut session| session.child.wait().ok().map(|s| s.exit_code()));
+            let exit_code = match removed {
+                Some(mut session) => session.child.wait().ok().map(|s| s.exit_code()),
+                None => None,
+            };
 
             emit(PtyEvent::Exited {
                 session_id,
