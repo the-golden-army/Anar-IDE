@@ -165,7 +165,10 @@ mod tests {
 
         fs::write(dir.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
         let bin_err = read_document(&scope, Path::new("blob.bin"));
-        assert!(matches!(bin_err, Err(WorkspaceError::BinaryOrInvalidUtf8(_))));
+        assert!(matches!(
+            bin_err,
+            Err(WorkspaceError::BinaryOrInvalidUtf8(_))
+        ));
 
         let _ = fs::remove_dir_all(&dir);
     }

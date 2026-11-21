@@ -19,7 +19,10 @@ impl WorkspaceScope {
             }
         };
         if !canonical.is_dir() {
-            let msg = format!("workspace path '{}' is not a directory", canonical.display());
+            let msg = format!(
+                "workspace path '{}' is not a directory",
+                canonical.display()
+            );
             return Err(WorkspaceError::NotDirectory(msg));
         }
         Ok(Self { root: canonical })
@@ -116,7 +119,10 @@ impl WorkspaceScope {
     fn normalize_candidate(&self, rel_or_abs: &Path) -> Result<PathBuf> {
         if rel_or_abs.is_absolute() {
             if !rel_or_abs.starts_with(&self.root) {
-                let msg = format!("absolute path '{}' is outside workspace", rel_or_abs.display());
+                let msg = format!(
+                    "absolute path '{}' is outside workspace",
+                    rel_or_abs.display()
+                );
                 return Err(WorkspaceError::PathEscape(msg));
             }
             let rel = rel_or_abs
