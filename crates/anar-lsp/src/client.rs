@@ -713,12 +713,13 @@ impl LspManager {
         let Some(writer_tx) = tx else {
             return Ok(());
         };
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        });
         writer_tx
-            .send(json!({
-                "jsonrpc": "2.0",
-                "method": method,
-                "params": params
-            }))
+            .send(payload)
             .map_err(|_| "rust-analyzer writer channel closed".to_string())
     }
 
@@ -748,15 +749,13 @@ impl LspManager {
             map.insert(id, tx);
         }
 
-        if writer_tx
-            .send(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": method,
-                "params": params
-            }))
-            .is_err()
-        {
+        let payload = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+        if writer_tx.send(payload).is_err() {
             if let Ok(mut map) = pending.lock() {
                 map.remove(&id);
             }
@@ -991,21 +990,18 @@ mod tests {
         let diags_cb = Arc::clone(&diags);
 
         let manager = Arc::new(LspManager::new());
-        manager
-            .connect_streams(
-                &root,
-                c2s_writer,
-                s2c_reader,
-                None,
-                Arc::new(move |evt| statuses_cb.lock().unwrap().push(evt.status)),
-                Arc::new(move |evt| diags_cb.lock().unwrap().push(evt)),
-                false,
-            )
-            .unwrap();
+        let conn_res = manager.connect_streams(
+            &root,
+            c2s_writer,
+            s2c_reader,
+            None,
+            Arc::new(move |evt| statuses_cb.lock().unwrap().push(evt.status)),
+            Arc::new(move |evt| diags_cb.lock().unwrap().push(evt)),
+            false,
+        );
+        conn_res.unwrap();
 
-        manager
-            .did_open("src/main.rs", "rust", "fn main() {}")
-            .unwrap();
+        manager.did_open("src/main.rs", "rust", "fn main() {}").unwrap();
 
         let completions = manager.completion("src/main.rs", 0, 5).unwrap();
         assert_eq!(completions.len(), 1);

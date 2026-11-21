@@ -223,29 +223,18 @@ pub fn parse_completion_response(result: &Value) -> Vec<LspCompletionItem> {
             if let Some(s) = doc.as_str() {
                 return Some(s.to_string());
             }
-            doc.get("value")
-                .and_then(Value::as_str)
-                .map(ToString::to_string)
+            doc.get("value").and_then(Value::as_str).map(ToString::to_string)
         });
         out.push(LspCompletionItem {
             label: label.to_string(),
-            detail: item
-                .get("detail")
-                .and_then(Value::as_str)
-                .map(ToString::to_string),
+            detail: item.get("detail").and_then(Value::as_str).map(ToString::to_string),
             documentation,
             kind: item
                 .get("kind")
                 .and_then(Value::as_u64)
                 .and_then(|k| u32::try_from(k).ok()),
-            insert_text: item
-                .get("insertText")
-                .and_then(Value::as_str)
-                .map(ToString::to_string),
-            sort_text: item
-                .get("sortText")
-                .and_then(Value::as_str)
-                .map(ToString::to_string),
+            insert_text: item.get("insertText").and_then(Value::as_str).map(ToString::to_string),
+            sort_text: item.get("sortText").and_then(Value::as_str).map(ToString::to_string),
         });
     }
     out
@@ -386,49 +375,38 @@ mod tests {
         let root = Path::new("/tmp/anar-demo");
         let uri = path_to_file_uri(&root.join("src/main.rs"));
 
-        let diags = parse_publish_diagnostics(
-            &json!({
-                "uri": uri,
-                "diagnostics": [{
-                    "range": {
-                        "start": { "line": 3, "character": 8 },
-                        "end": { "line": 3, "character": 14 }
-                    },
-                    "severity": 1,
-                    "code": "E0425",
-                    "message": "cannot find value `foo` in this scope"
-                }]
-            }),
-            root,
-        )
-        .unwrap();
+        let diag_params = json!({
+            "uri": uri,
+            "diagnostics": [{
+                "range": {
+                    "start": { "line": 3, "character": 8 },
+                    "end": { "line": 3, "character": 14 }
+                },
+                "severity": 1,
+                "code": "E0425",
+                "message": "cannot find value `foo` in this scope"
+            }]
+        });
+        let diags = parse_publish_diagnostics(&diag_params, root).unwrap();
 
         assert_eq!(diags.relative_path, "src/main.rs");
         assert_eq!(diags.diagnostics.len(), 1);
         assert_eq!(diags.diagnostics[0].severity, DiagnosticSeverity::Error);
-        assert_eq!(
-            diags.diagnostics[0].primary_span.as_ref().unwrap().line_start,
-            4
-        );
-        assert_eq!(
-            diags.diagnostics[0].primary_span.as_ref().unwrap().column_start,
-            9
-        );
+        assert_eq!(diags.diagnostics[0].primary_span.as_ref().unwrap().line_start, 4);
+        assert_eq!(diags.diagnostics[0].primary_span.as_ref().unwrap().column_start, 9);
 
-        let defs = parse_definition_response(
-            &json!([{
-                "targetUri": uri,
-                "targetRange": {
-                    "start": { "line": 10, "character": 0 },
-                    "end": { "line": 10, "character": 12 }
-                },
-                "targetSelectionRange": {
-                    "start": { "line": 10, "character": 3 },
-                    "end": { "line": 10, "character": 10 }
-                }
-            }]),
-            root,
-        );
+        let def_payload = json!([{
+            "targetUri": uri,
+            "targetRange": {
+                "start": { "line": 10, "character": 0 },
+                "end": { "line": 10, "character": 12 }
+            },
+            "targetSelectionRange": {
+                "start": { "line": 10, "character": 3 },
+                "end": { "line": 10, "character": 10 }
+            }
+        }]);
+        let defs = parse_definition_response(&def_payload, root);
         assert_eq!(
             defs,
             vec![LspLocation {
@@ -441,7 +419,7 @@ mod tests {
 
     #[test]
     fn parses_completion_hover_and_formatting() {
-        let completions = parse_completion_response(&json!({
+        let comp_payload = json!({
             "isIncomplete": false,
             "items": [{
                 "label": "println!",
@@ -449,27 +427,26 @@ mod tests {
                 "detail": "macro_rules! println",
                 "documentation": { "kind": "markdown", "value": "Prints to stdout." }
             }]
-        }));
+        });
+        let completions = parse_completion_response(&comp_payload);
         assert_eq!(completions.len(), 1);
         assert_eq!(completions[0].label, "println!");
-        assert_eq!(
-            completions[0].documentation.as_deref(),
-            Some("Prints to stdout.")
-        );
+        assert_eq!(completions[0].documentation.as_deref(), Some("Prints to stdout."));
 
-        let hover = parse_hover_response(&json!({
+        let hover_payload = json!({
             "contents": { "kind": "markdown", "value": "```rust\nlet x: i32\n```" }
-        }))
-        .unwrap();
+        });
+        let hover = parse_hover_response(&hover_payload).unwrap();
         assert!(hover.contents.contains("let x: i32"));
 
-        let edits = parse_formatting_response(&json!([{
+        let fmt_payload = json!([{
             "range": {
                 "start": { "line": 0, "character": 0 },
                 "end": { "line": 0, "character": 5 }
             },
             "newText": "fn main() {}"
-        }]));
+        }]);
+        let edits = parse_formatting_response(&fmt_payload);
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, "fn main() {}");
     }
