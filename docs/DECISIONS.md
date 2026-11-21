@@ -55,4 +55,17 @@ This log records key decisions made when resolving ambiguities or environment co
 - **Decision:** Tag Phase 2 as `v0.1.0-alpha.1` (SemVer prerelease), reserving `v0.1.0` for Phase 3 completion.
 - **Consequences:** Preserves monotonic SemVer ordering across Phase 1 (`v0.0.1`), Phase 2 (`v0.1.0-alpha.1`), and Phase 3 (`v0.1.0`).
 
+## ADR-009: Imperative CodeMirror 6 `EditorState` Cache & Large-File Tuning (`>= 1 MiB`)
+
+- **Context:** Storing full document strings in React state on every keystroke causes multi-megabyte string copies and re-renders on 5 MB Rust files, freezing the UI.
+- **Decision:** Keep a single mounted CodeMirror `EditorView` and cache each open tab's `EditorState`, `savedDoc: Text`, and scroll offsets in an imperative `Map` inside `CodeMirrorEditor`. Use `state.doc.eq(savedDoc)` for structural `O(1)` dirty checks without calling `.toString()` per keystroke, and disable whole-document `foldGutter`/`bracketMatching`/`highlightSelectionMatches` for files `>= 1 MiB` (`LARGE_FILE_THRESHOLD_BYTES`).
+- **Consequences:** Tab switching preserves undo/redo history and scroll position with zero React re-renders per keystroke, while 5 MB files load and edit responsively.
+
+## ADR-010: Rust-Side Native Folder Picker & Scoped Workspace Access
+
+- **Context:** Phase 3 needs folder selection and filesystem CRUD while preserving ADR-002's minimal webview capabilities (`core:default`).
+- **Decision:** Invoke `tauri-plugin-dialog` (`app.dialog().file().blocking_pick_folder()`) inside the Rust `pick_workspace_folder` command rather than granting broad frontend `@tauri-apps/plugin-dialog` or `@tauri-apps/plugin-fs` capabilities. All subsequent reads, writes, renames, deletes, and `notify` watches are canonicalized and confined to the active `WorkspaceScope`.
+- **Consequences:** `capabilities/default.json` remains minimal (`core:default`), and path traversal or symlink escape from the webview is rejected in Rust.
+
+
 

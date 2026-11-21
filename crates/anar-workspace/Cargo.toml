@@ -10,3 +10,5 @@ authors.workspace = true
 
 [dependencies]
 anar-core.workspace = true
+notify.workspace = true
+serde.workspace = true

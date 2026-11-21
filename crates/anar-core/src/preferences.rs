@@ -1,4 +1,4 @@
-//! Persistent user preferences for theme and workspace panel layout.
+//! Persistent user preferences for theme, layout, and recent workspaces.
 //!
 //! Kept free of Tauri dependencies so unit tests run standalone and any host
 //! (desktop app, CLI, or tests) can load and validate preferences identically.
@@ -8,6 +8,8 @@ use std::fs;
 use std::path::Path;
 
 pub const PREFERENCES_SCHEMA_VERSION: u32 = 1;
+pub const MAX_RECENT_WORKSPACES: usize = 8;
+
 pub const MIN_SIDEBAR_WIDTH: u16 = 180;
 pub const MAX_SIDEBAR_WIDTH: u16 = 480;
 pub const DEFAULT_SIDEBAR_WIDTH: u16 = 260;
@@ -48,6 +50,14 @@ pub enum BottomTab {
     Output,
     Problems,
     Terminal,
+}
+
+/// Entry in the recently opened Rust workspaces list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentWorkspace {
+    pub name: String,
+    pub path: String,
 }
 
 /// Persistent panel visibility, active tabs, and dimensions.
@@ -102,6 +112,7 @@ pub struct AppPreferences {
     pub version: u32,
     pub theme: ThemeMode,
     pub layout: LayoutState,
+    pub recent_workspaces: Vec<RecentWorkspace>,
 }
 
 impl Default for AppPreferences {
@@ -110,16 +121,45 @@ impl Default for AppPreferences {
             version: PREFERENCES_SCHEMA_VERSION,
             theme: ThemeMode::default(),
             layout: LayoutState::default(),
+            recent_workspaces: Vec::new(),
         }
     }
 }
 
 impl AppPreferences {
-    /// Normalizes schema version and clamps layout dimensions.
+    /// Normalizes schema version, deduplicates recent workspaces, and clamps layout dimensions.
     pub fn sanitized(mut self) -> Self {
         self.version = PREFERENCES_SCHEMA_VERSION;
         self.layout = self.layout.sanitized();
+        let cap = self.recent_workspaces.len().min(MAX_RECENT_WORKSPACES);
+        let mut deduped: Vec<RecentWorkspace> = Vec::with_capacity(cap);
+        for entry in self.recent_workspaces {
+            if entry.path.trim().is_empty() {
+                continue;
+            }
+            let seen = deduped.iter().any(|existing| existing.path == entry.path);
+            if !seen {
+                deduped.push(entry);
+            }
+            if deduped.len() == MAX_RECENT_WORKSPACES {
+                break;
+            }
+        }
+        self.recent_workspaces = deduped;
         self
+    }
+
+    /// Inserts or promotes a workspace at the top of the recent list.
+    pub fn record_recent_workspace(&mut self, name: impl Into<String>, path: impl Into<String>) {
+        let path = path.into();
+        let name = name.into();
+        if path.trim().is_empty() {
+            return;
+        }
+        self.recent_workspaces.retain(|item| item.path != path);
+        let entry = RecentWorkspace { name, path };
+        self.recent_workspaces.insert(0, entry);
+        self.recent_workspaces.truncate(MAX_RECENT_WORKSPACES);
     }
 }
 
@@ -148,7 +188,6 @@ pub fn save_preferences(path: &Path, prefs: &AppPreferences) -> Result<AppPrefer
         .map_err(|err| format!("failed to write temporary preferences file: {err}"))?;
 
     if let Err(rename_err) = fs::rename(&tmp_path, path) {
-        // On some platforms/filesystems, rename over an existing file can fail; fall back cleanly.
         if fs::write(path, json.as_bytes()).is_err() {
             let _ = fs::remove_file(&tmp_path);
             return Err(format!("failed to persist preferences file: {rename_err}"));
@@ -202,9 +241,9 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_roundtrip_preserves_theme_and_layout() {
+    fn save_and_load_roundtrip_preserves_theme_layout_and_recents() {
         let path = unique_temp_path("preferences.json");
-        let prefs = AppPreferences {
+        let mut prefs = AppPreferences {
             version: 1,
             theme: ThemeMode::Light,
             layout: LayoutState {
@@ -217,7 +256,9 @@ mod tests {
                 inspector_open: true,
                 inspector_width: 300,
             },
+            recent_workspaces: Vec::new(),
         };
+        prefs.record_recent_workspace("anar", "/tmp/anar");
 
         let saved = save_preferences(&path, &prefs).expect("save preferences");
         assert_eq!(saved, prefs);
@@ -225,6 +266,20 @@ mod tests {
         assert_eq!(loaded, prefs);
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn record_recent_workspace_promotes_and_caps_at_max() {
+        let mut prefs = AppPreferences::default();
+        for idx in 0..12 {
+            prefs.record_recent_workspace(format!("proj-{idx}"), format!("/tmp/proj-{idx}"));
+        }
+        assert_eq!(prefs.recent_workspaces.len(), MAX_RECENT_WORKSPACES);
+        assert_eq!(prefs.recent_workspaces[0].name, "proj-11");
+
+        prefs.record_recent_workspace("proj-8", "/tmp/proj-8");
+        assert_eq!(prefs.recent_workspaces[0].name, "proj-8");
+        assert_eq!(prefs.recent_workspaces.len(), MAX_RECENT_WORKSPACES);
     }
 
     #[test]
@@ -237,6 +292,7 @@ mod tests {
         assert_eq!(loaded.theme, ThemeMode::Dark);
         assert!(loaded.layout.sidebar_open);
         assert_eq!(loaded.layout.sidebar_width, DEFAULT_SIDEBAR_WIDTH);
+        assert!(loaded.recent_workspaces.is_empty());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
     }
