@@ -3,8 +3,8 @@
 use crate::protocol::{
     parse_completion_response, parse_definition_response, parse_formatting_response,
     parse_hover_response, parse_publish_diagnostics, parse_work_done_progress, read_lsp_message,
-    write_lsp_message, LspCompletionItem, LspDiagnosticsEvent, LspHoverInfo, LspLocation, LspStatus,
-    LspStatusEvent, LspTextEdit,
+    write_lsp_message, LspCompletionItem, LspDiagnosticsEvent, LspHoverInfo, LspLocation,
+    LspStatus, LspStatusEvent, LspTextEdit,
 };
 use crate::uri::path_to_file_uri;
 use serde_json::{json, Value};
@@ -804,7 +804,10 @@ pub fn find_rust_analyzer() -> Option<PathBuf> {
     };
 
     if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-        let candidate = PathBuf::from(home).join(".cargo").join("bin").join(bin_name);
+        let candidate = PathBuf::from(home)
+            .join(".cargo")
+            .join("bin")
+            .join(bin_name);
         if candidate.is_file() {
             return Some(candidate);
         }
@@ -988,7 +991,9 @@ mod tests {
         );
         conn_res.unwrap();
 
-        manager.did_open("src/main.rs", "rust", "fn main() {}").unwrap();
+        manager
+            .did_open("src/main.rs", "rust", "fn main() {}")
+            .unwrap();
 
         let completions = manager.completion("src/main.rs", 0, 5).unwrap();
         assert_eq!(completions.len(), 1);

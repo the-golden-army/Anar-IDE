@@ -73,14 +73,7 @@ jobs:
         run: npm run build
 
       - name: Rust format check
-        run: |
-          if ! cargo fmt --all -- --check; then
-            if [ "${{ runner.os }}" = "Linux" ]; then
-              DIFF=$(cargo fmt --all -- --check 2>&1 | sed ':a;N;$!ba;s/\n/ | /g')
-              echo "::warning::${DIFF:0:1500}"
-            fi
-            exit 1
-          fi
+        run: cargo fmt --all -- --check
 
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
