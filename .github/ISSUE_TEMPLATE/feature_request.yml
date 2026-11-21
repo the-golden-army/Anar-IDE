@@ -1,0 +1,30 @@
+name: Feature Request
+description: Propose a new capability or enhancement for Anar
+title: "[feature]: "
+labels: ["feature"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem & Proposal
+      description: What problem does this solve and how should Anar behave?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Component / Phase Area
+      options:
+        - ui
+        - rust-analyzer
+        - rusturbo
+        - frameworks
+        - runner / workspace
+        - ci / docs
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete verification checks for this feature.
