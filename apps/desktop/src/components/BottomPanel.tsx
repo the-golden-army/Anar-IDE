@@ -10,13 +10,16 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { LAYOUT_LIMITS, type BottomTab } from '../types/preferences';
+import { TerminalView } from './TerminalView';
+import { LAYOUT_LIMITS, type BottomTab, type ResolvedTheme } from '../types/preferences';
 import type { DiagnosticItem, OutputLine, RunnerAction } from '../types/runner';
 
 interface BottomPanelProps {
   open: boolean;
   height: number;
   activeTab: BottomTab;
+  workspaceKey: string | null;
+  resolvedTheme: ResolvedTheme;
   outputLines: OutputLine[];
   diagnostics: DiagnosticItem[];
   isRunning: boolean;
@@ -41,6 +44,8 @@ export function BottomPanel({
   open,
   height,
   activeTab,
+  workspaceKey,
+  resolvedTheme,
   outputLines,
   diagnostics,
   isRunning,
@@ -340,13 +345,11 @@ export function BottomPanel({
         </div>
       )}
 
-      {activeTab === 'terminal' && (
-        <div className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] text-xs text-[var(--text-secondary)]">
-          <p className="leading-relaxed">
-            Integrated cross-platform PTY terminal powered by portable-pty and xterm.js (Phase 8).
-          </p>
-        </div>
-      )}
+      <TerminalView
+        active={activeTab === 'terminal'}
+        workspaceKey={workspaceKey}
+        resolvedTheme={resolvedTheme}
+      />
     </section>
   );
 }

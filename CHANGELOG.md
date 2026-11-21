@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `anar-core::preferences` persistent `compilerBackend` (`Cargo` | `Rusturbo`) with `set_compiler_backend` Tauri command.
 - `anar-runner::rusturbo` Phase 7 Rusturbo integration: PATH/version probing, `rusturbo.toml` inspection, `rusturbo init` & `rusturbo analyze --json` parsing, `NO_COLOR=1` subprocess execution for `build`/`run` with automatic Cargo fallback for `check`/`test`, and fallback `rustc` stderr diagnostic parsing.
 - **Compiler Backend** switcher (`Cargo` / `Rusturbo`), `Analyze`, `Init rusturbo.toml`, and dependency-graph/linker/sccache/cache readout in `InspectorPanel`, plus live backend status in `StatusBar` and `TitleBar`.
+- `anar-workspace::search` and `anar-workspace::git` Phase 8 workspace text/fuzzy-file search (`search_workspace`, `find_workspace_files`) and Git status, unified diff, stage, and unstage commands (`git_status`, `git_diff`, `git_stage_file`, `git_unstage_file`).
+- `anar-runner::pty` cross-platform interactive PTY terminal manager backed by `portable-pty` (`pty_spawn`, `pty_write`, `pty_resize`, `pty_kill`) and `@xterm/xterm` + `@xterm/addon-fit` UI (`TerminalView`, `SearchView`, `GitView`).
 
 ## [0.1.0] - 2026-11-21
 

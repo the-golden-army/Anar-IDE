@@ -16,6 +16,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { useCompactViewport } from './hooks/useCompactViewport';
 import { usePreferences } from './hooks/usePreferences';
 import { detectWorkspaceFrameworks, startProfileRun } from './services/frameworksClient';
+import { fetchGitDiff, fetchGitStatus, stageGitFile, unstageGitFile } from './services/gitClient';
 import {
   getLspStatus,
   lspDidChange,
@@ -27,6 +28,7 @@ import {
   restartLsp,
 } from './services/lspClient';
 import { fetchPreferences, isTauriRuntime } from './services/preferencesClient';
+import { searchWorkspace } from './services/searchClient';
 import {
   createWorkspaceDir,
   createWorkspaceFile,
@@ -49,6 +51,7 @@ import {
 } from './services/runnerClient';
 import { getFullscreenState, toggleFullscreen } from './services/windowClient';
 import type { WorkspaceFrameworkReport } from './types/frameworks';
+import type { GitChangedFile, GitDiffResult, GitStatusReport } from './types/git';
 import type { LspLocation, LspStatusEvent } from './types/lsp';
 import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
 import type {
@@ -59,6 +62,7 @@ import type {
   RusturboAnalysis,
   RusturboStatus,
 } from './types/runner';
+import type { WorkspaceSearchResult } from './types/search';
 import type { EditorTab, FileEntry, WorkspaceFsEvent, WorkspaceInfo } from './types/workspace';
 
 function formatError(err: unknown): string {
@@ -111,6 +115,11 @@ export function App() {
   const [rusturboStatus, setRusturboStatus] = useState<RusturboStatus | null>(null);
   const [rusturboAnalysis, setRusturboAnalysis] = useState<RusturboAnalysis | null>(null);
   const [rusturboBusy, setRusturboBusy] = useState(false);
+  const [searchResult, setSearchResult] = useState<WorkspaceSearchResult | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [gitStatus, setGitStatus] = useState<GitStatusReport | null>(null);
+  const [selectedGitDiff, setSelectedGitDiff] = useState<GitDiffResult | null>(null);
+  const [gitLoading, setGitLoading] = useState(false);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const initialContentsRef = useRef<Map<string, string>>(new Map());
@@ -170,6 +179,22 @@ export function App() {
     }
   }, []);
 
+  const refreshGitStatus = useCallback(async () => {
+    if (!workspaceRef.current) {
+      setGitStatus(null);
+      return;
+    }
+    setGitLoading(true);
+    try {
+      const report = await fetchGitStatus();
+      setGitStatus(report);
+    } catch {
+      setGitStatus(null);
+    } finally {
+      setGitLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isTauriRuntime()) {
       void refreshRusturboStatus();
@@ -196,6 +221,9 @@ export function App() {
       setFrameworkReport(null);
       setSelectedProfileId(null);
       setRusturboAnalysis(null);
+      setSearchResult(null);
+      setGitStatus(null);
+      setSelectedGitDiff(null);
       activeRunIdRef.current = null;
       initialContentsRef.current.clear();
 
@@ -218,11 +246,13 @@ export function App() {
 
       void refreshFrameworks();
       void refreshRusturboStatus();
+      workspaceRef.current = info;
+      void refreshGitStatus();
 
       const updatedPrefs = await fetchPreferences();
       setRecentWorkspaces(updatedPrefs.recentWorkspaces);
     },
-    [refreshFrameworks, refreshRusturboStatus],
+    [refreshFrameworks, refreshGitStatus, refreshRusturboStatus],
   );
 
   const handleOpenFolder = useCallback(async () => {
@@ -332,6 +362,7 @@ export function App() {
         if (targetPath.endsWith('rusturbo.toml')) {
           void refreshRusturboStatus();
         }
+        void refreshGitStatus();
         setTabs((prev) =>
           prev.map((t) =>
             t.relativePath === targetPath
@@ -351,7 +382,7 @@ export function App() {
         setErrorBanner(formatError(err));
       }
     },
-    [refreshFrameworks, refreshRusturboStatus, showTransientStatus],
+    [refreshFrameworks, refreshGitStatus, refreshRusturboStatus, showTransientStatus],
   );
 
   const handleReloadFromDisk = useCallback(
@@ -505,6 +536,7 @@ export function App() {
       if (events.some((evt) => evt.relativePath.endsWith('rusturbo.toml'))) {
         void refreshRusturboStatus();
       }
+      void refreshGitStatus();
 
       for (const evt of events) {
         const openTab = tabsRef.current.find((t) => t.relativePath === evt.relativePath);
@@ -543,7 +575,13 @@ export function App() {
       disposed = true;
       if (unlisten) unlisten();
     };
-  }, [handleReloadFromDisk, refreshDirectory, refreshFrameworks, refreshRusturboStatus]);
+  }, [
+    handleReloadFromDisk,
+    refreshDirectory,
+    refreshFrameworks,
+    refreshGitStatus,
+    refreshRusturboStatus,
+  ]);
 
   const handleDirtyChange = useCallback((relPath: string, dirty: boolean) => {
     setTabs((prev) =>
@@ -857,6 +895,50 @@ export function App() {
     }
   }, [handleRefreshExplorer, showTransientStatus]);
 
+  const handleSearchWorkspace = useCallback(async (query: string, caseSensitive: boolean) => {
+    if (!workspaceRef.current) return;
+    setIsSearching(true);
+    setErrorBanner(null);
+    try {
+      const result = await searchWorkspace(query, caseSensitive);
+      setSearchResult(result);
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
+
+  const handleSelectGitDiff = useCallback(async (entry: GitChangedFile) => {
+    setErrorBanner(null);
+    try {
+      const diff = await fetchGitDiff(entry.relativePath, entry.staged);
+      setSelectedGitDiff(diff);
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, []);
+
+  const handleStageGitFile = useCallback(async (relPath: string) => {
+    setErrorBanner(null);
+    try {
+      const updated = await stageGitFile(relPath);
+      setGitStatus(updated);
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, []);
+
+  const handleUnstageGitFile = useCallback(async (relPath: string) => {
+    setErrorBanner(null);
+    try {
+      const updated = await unstageGitFile(relPath);
+      setGitStatus(updated);
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, []);
+
   useEffect(() => {
     const timers = lspChangeTimersRef.current;
     return () => {
@@ -1024,6 +1106,13 @@ export function App() {
       } else if (key === 'j' && !event.shiftKey && !event.altKey) {
         event.preventDefault();
         updateLayout((prev) => ({ ...prev, bottomPanelOpen: !prev.bottomPanelOpen }));
+      } else if (key === 'f' && event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        updateLayout((prev) => ({
+          ...prev,
+          sidebarOpen: true,
+          activeSidebarTab: 'search',
+        }));
       } else if (key === 'i' && event.shiftKey && !event.altKey) {
         event.preventDefault();
         updateLayout((prev) => ({ ...prev, inspectorOpen: !prev.inspectorOpen }));
@@ -1146,6 +1235,11 @@ export function App() {
           expandedDirs={expandedDirs}
           activeFilePath={activeTabPath}
           dirtyPaths={dirtyPaths}
+          searchResult={searchResult}
+          isSearching={isSearching}
+          gitStatus={gitStatus}
+          selectedGitDiff={selectedGitDiff}
+          gitLoading={gitLoading}
           onClose={() => updateLayout((prev) => ({ ...prev, sidebarOpen: false }))}
           onResize={(sidebarWidth) => updateLayout((prev) => ({ ...prev, sidebarWidth }))}
           onSelectTab={(activeSidebarTab) =>
@@ -1159,6 +1253,14 @@ export function App() {
           onCreateDir={handleCreateDir}
           onRenameEntry={handleRenameEntry}
           onDeleteEntry={handleDeleteEntry}
+          onSearchWorkspace={(query, caseSensitive) =>
+            void handleSearchWorkspace(query, caseSensitive)
+          }
+          onOpenLocation={(loc) => void handleNavigateLocation(loc)}
+          onRefreshGit={() => void refreshGitStatus()}
+          onSelectGitDiff={(entry) => void handleSelectGitDiff(entry)}
+          onStageGitFile={(relPath) => void handleStageGitFile(relPath)}
+          onUnstageGitFile={(relPath) => void handleUnstageGitFile(relPath)}
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-app)]">
@@ -1260,6 +1362,8 @@ export function App() {
             open={layout.bottomPanelOpen}
             height={layout.bottomPanelHeight}
             activeTab={layout.activeBottomTab}
+            workspaceKey={workspace?.rootPath ?? null}
+            resolvedTheme={resolvedTheme}
             outputLines={outputLines}
             diagnostics={diagnostics}
             isRunning={isRunning}

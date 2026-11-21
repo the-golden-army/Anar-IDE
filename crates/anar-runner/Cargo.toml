@@ -10,5 +10,6 @@ authors.workspace = true
 
 [dependencies]
 anar-core.workspace = true
+portable-pty = "0.8"
 serde.workspace = true
 serde_json.workspace = true

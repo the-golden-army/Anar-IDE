@@ -1,11 +1,14 @@
 //! Workspace filesystem, file watching, project search, and Git operations.
 //!
-//! Phase 3 provides canonical workspace scoping, directory listing, file CRUD,
-//! large-file metadata, and debounced external change detection.
+//! Provides canonical workspace scoping, directory listing, file CRUD,
+//! large-file metadata, debounced external change detection, workspace search,
+//! and Git status/diff/staging queries.
 
 pub mod error;
 pub mod files;
+pub mod git;
 pub mod path_scope;
+pub mod search;
 pub mod tree;
 pub mod watcher;
 
@@ -15,7 +18,15 @@ pub use files::{
 };
 pub use files::{DocumentContent, LineEnding, SaveResult};
 pub use files::{LARGE_FILE_THRESHOLD_BYTES, MAX_FILE_SIZE_BYTES};
+pub use git::{
+    git_diff, git_stage_file, git_status, git_unstage_file, GitChangedFile, GitDiffResult,
+    GitStatusReport,
+};
 pub use path_scope::WorkspaceScope;
+pub use search::{
+    find_workspace_files, search_workspace_text, SearchFileMatches, SearchMatch,
+    WorkspaceSearchResult,
+};
 pub use tree::{
     is_ignored_dir_name, is_ignored_relative_path, list_directory, open_workspace, FileEntry,
     WorkspaceInfo,

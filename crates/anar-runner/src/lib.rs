@@ -6,10 +6,12 @@
 
 pub mod diagnostics;
 pub mod process;
+pub mod pty;
 pub mod rusturbo;
 
 pub use diagnostics::{normalize_diagnostic_path, parse_cargo_stdout_line, ParsedCargoLine};
 pub use process::RunnerManager;
+pub use pty::{default_shell, PtyEvent, PtyManager};
 pub use rusturbo::{
     analyze_workspace_with_rusturbo, find_rusturbo_binary, init_rusturbo_config,
     probe_rusturbo_status, RusturboAnalysis, RusturboStatus,

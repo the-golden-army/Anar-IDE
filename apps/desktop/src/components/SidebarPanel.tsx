@@ -1,7 +1,12 @@
-import { GitBranch, Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ExplorerView } from './ExplorerView';
+import { GitView } from './GitView';
+import { SearchView } from './SearchView';
+import type { GitChangedFile, GitDiffResult, GitStatusReport } from '../types/git';
+import type { LspLocation } from '../types/lsp';
 import { LAYOUT_LIMITS, type SidebarTab } from '../types/preferences';
+import type { WorkspaceSearchResult } from '../types/search';
 import type { FileEntry, WorkspaceInfo } from '../types/workspace';
 
 interface SidebarPanelProps {
@@ -14,6 +19,11 @@ interface SidebarPanelProps {
   expandedDirs: Set<string>;
   activeFilePath: string | null;
   dirtyPaths: Set<string>;
+  searchResult: WorkspaceSearchResult | null;
+  isSearching: boolean;
+  gitStatus: GitStatusReport | null;
+  selectedGitDiff: GitDiffResult | null;
+  gitLoading: boolean;
   onClose: () => void;
   onResize: (width: number) => void;
   onSelectTab: (tab: SidebarTab) => void;
@@ -25,24 +35,18 @@ interface SidebarPanelProps {
   onCreateDir: (relativePath: string) => Promise<void>;
   onRenameEntry: (from: string, to: string) => Promise<void>;
   onDeleteEntry: (relativePath: string) => Promise<void>;
+  onSearchWorkspace: (query: string, caseSensitive: boolean) => void;
+  onOpenLocation: (loc: LspLocation) => void;
+  onRefreshGit: () => void;
+  onSelectGitDiff: (entry: GitChangedFile) => void;
+  onStageGitFile: (relPath: string) => void;
+  onUnstageGitFile: (relPath: string) => void;
 }
 
-const NON_EXPLORER_TABS: Record<
-  Exclude<SidebarTab, 'explorer'>,
-  { title: string; badge: string; body: string; Icon: typeof Search }
-> = {
-  search: {
-    title: 'Search',
-    badge: 'Phase 8',
-    body: 'Project-wide ripgrep search and fuzzy symbol navigation will live here.',
-    Icon: Search,
-  },
-  git: {
-    title: 'Source Control',
-    badge: 'Phase 8',
-    body: 'Git branch status, changed files, and inline diffs will appear here.',
-    Icon: GitBranch,
-  },
+const TAB_TITLES: Record<SidebarTab, string> = {
+  explorer: 'Explorer',
+  search: 'Search',
+  git: 'Source Control',
 };
 
 export function SidebarPanel({
@@ -55,6 +59,11 @@ export function SidebarPanel({
   expandedDirs,
   activeFilePath,
   dirtyPaths,
+  searchResult,
+  isSearching,
+  gitStatus,
+  selectedGitDiff,
+  gitLoading,
   onClose,
   onResize,
   onSelectTab,
@@ -66,6 +75,12 @@ export function SidebarPanel({
   onCreateDir,
   onRenameEntry,
   onDeleteEntry,
+  onSearchWorkspace,
+  onOpenLocation,
+  onRefreshGit,
+  onSelectGitDiff,
+  onStageGitFile,
+  onUnstageGitFile,
 }: SidebarPanelProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
@@ -75,8 +90,7 @@ export function SidebarPanel({
     return null;
   }
 
-  const headerTitle = activeTab === 'explorer' ? 'Explorer' : NON_EXPLORER_TABS[activeTab].title;
-  const headerBadge = activeTab === 'explorer' ? null : NON_EXPLORER_TABS[activeTab].badge;
+  const headerTitle = TAB_TITLES[activeTab];
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -123,11 +137,6 @@ export function SidebarPanel({
           <span className="text-xs font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
             {headerTitle}
           </span>
-          {headerBadge && (
-            <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
-              {headerBadge}
-            </span>
-          )}
         </div>
         <button
           type="button"
@@ -172,22 +181,26 @@ export function SidebarPanel({
           onRenameEntry={onRenameEntry}
           onDeleteEntry={onDeleteEntry}
         />
+      ) : activeTab === 'search' ? (
+        <SearchView
+          hasWorkspace={workspace !== null}
+          searchResult={searchResult}
+          isSearching={isSearching}
+          onSearch={onSearchWorkspace}
+          onOpenLocation={onOpenLocation}
+        />
       ) : (
-        (() => {
-          const info = NON_EXPLORER_TABS[activeTab];
-          const TabIcon = info.Icon;
-          return (
-            <div className="anar-scroll flex flex-1 flex-col items-center justify-center overflow-y-auto p-5 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--accent)]">
-                <TabIcon className="h-5 w-5" />
-              </div>
-              <p className="mt-3 text-xs font-medium text-[var(--text-primary)]">{info.title}</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
-                {info.body}
-              </p>
-            </div>
-          );
-        })()
+        <GitView
+          hasWorkspace={workspace !== null}
+          status={gitStatus}
+          selectedDiff={selectedGitDiff}
+          isLoading={gitLoading}
+          onRefresh={onRefreshGit}
+          onSelectDiff={onSelectGitDiff}
+          onStageFile={onStageGitFile}
+          onUnstageFile={onUnstageGitFile}
+          onOpenFile={onSelectFile}
+        />
       )}
 
       {!isCompact && (

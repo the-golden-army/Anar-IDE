@@ -12,13 +12,16 @@ use anar_lsp::{
 };
 use anar_runner::{
     analyze_workspace_with_rusturbo, init_rusturbo_config as init_rusturbo_in_dir,
-    probe_rusturbo_status, RunnerAction, RunnerEvent, RunnerManager, RusturboAnalysis,
-    RusturboStatus,
+    probe_rusturbo_status, PtyEvent, PtyManager, RunnerAction, RunnerEvent, RunnerManager,
+    RusturboAnalysis, RusturboStatus,
 };
 use anar_workspace::{
-    create_directory, create_file, delete_entry, list_directory, open_workspace, read_document,
-    rename_entry, save_document, DocumentContent, FileEntry, SaveResult, WorkspaceInfo,
-    WorkspaceScope, WorkspaceWatcher,
+    create_directory, create_file, delete_entry, find_workspace_files as find_files_in_scope,
+    git_diff as workspace_git_diff, git_stage_file as workspace_git_stage,
+    git_status as workspace_git_status, git_unstage_file as workspace_git_unstage,
+    list_directory, open_workspace, read_document, rename_entry, save_document,
+    search_workspace_text, DocumentContent, FileEntry, GitDiffResult, GitStatusReport, SaveResult,
+    WorkspaceInfo, WorkspaceScope, WorkspaceSearchResult, WorkspaceWatcher,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -160,6 +163,10 @@ impl WorkspaceState {
 /// Thread-safe backend state for the active Cargo/Rusturbo runner.
 #[derive(Default)]
 pub struct RunnerState(pub Arc<RunnerManager>);
+
+/// Thread-safe backend state for interactive PTY terminal sessions.
+#[derive(Default)]
+pub struct PtyState(pub Arc<PtyManager>);
 
 /// Thread-safe backend state for the managed `rust-analyzer` LSP bridge.
 #[derive(Default)]
@@ -640,6 +647,122 @@ fn start_profile_run(
     )
 }
 
+#[tauri::command]
+async fn search_workspace(
+    query: String,
+    case_sensitive: bool,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<WorkspaceSearchResult, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        search_workspace_text(&scope, &query, case_sensitive, None).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|err| format!("workspace search task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn find_workspace_files(
+    query: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<Vec<String>, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        find_files_in_scope(&scope, &query, None).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|err| format!("workspace file search failed: {err}"))?
+}
+
+#[tauri::command]
+async fn git_status(ws_state: tauri::State<'_, WorkspaceState>) -> Result<GitStatusReport, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || workspace_git_status(&scope))
+        .await
+        .map_err(|err| format!("git status task failed: {err}"))
+}
+
+#[tauri::command]
+async fn git_diff(
+    rel_path: String,
+    staged: bool,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<GitDiffResult, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace_git_diff(&scope, &rel_path, staged).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|err| format!("git diff task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn git_stage_file(
+    rel_path: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<GitStatusReport, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace_git_stage(&scope, &rel_path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|err| format!("git stage task failed: {err}"))?
+}
+
+#[tauri::command]
+async fn git_unstage_file(
+    rel_path: String,
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<GitStatusReport, String> {
+    let scope = ws_state.scope()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace_git_unstage(&scope, &rel_path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|err| format!("git unstage task failed: {err}"))?
+}
+
+#[tauri::command]
+fn pty_spawn(
+    cols: u16,
+    rows: u16,
+    on_event: tauri::ipc::Channel<PtyEvent>,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    pty_state: tauri::State<'_, PtyState>,
+) -> Result<u64, String> {
+    let working_dir = match ws_state.scope() {
+        Ok(s) => s.root().to_path_buf(),
+        Err(_) => std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()),
+    };
+    pty_state.0.spawn(&working_dir, cols, rows, move |evt| {
+        let _ = on_event.send(evt);
+    })
+}
+
+#[tauri::command]
+fn pty_write(
+    session_id: u64,
+    data: String,
+    pty_state: tauri::State<'_, PtyState>,
+) -> Result<(), String> {
+    pty_state.0.write(session_id, &data)
+}
+
+#[tauri::command]
+fn pty_resize(
+    session_id: u64,
+    cols: u16,
+    rows: u16,
+    pty_state: tauri::State<'_, PtyState>,
+) -> Result<(), String> {
+    pty_state.0.resize(session_id, cols, rows)
+}
+
+#[tauri::command]
+fn pty_kill(session_id: u64, pty_state: tauri::State<'_, PtyState>) -> Result<bool, String> {
+    pty_state.0.kill(session_id)
+}
+
 /// Entry point for the Anar desktop application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -654,6 +777,7 @@ pub fn run() {
             app.manage(PreferencesState::load(prefs_path));
             app.manage(WorkspaceState::default());
             app.manage(RunnerState::default());
+            app.manage(PtyState::default());
             app.manage(LspState::default());
             Ok(())
         })
@@ -693,7 +817,17 @@ pub fn run() {
             list_project_templates,
             pick_parent_folder,
             create_project_from_template,
-            start_profile_run
+            start_profile_run,
+            search_workspace,
+            find_workspace_files,
+            git_status,
+            git_diff,
+            git_stage_file,
+            git_unstage_file,
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anar");
