@@ -1,4 +1,13 @@
-import { FolderOpen, PanelBottom, PanelLeft, PanelRight, Play, Save } from 'lucide-react';
+import {
+  FolderOpen,
+  Maximize2,
+  Minimize2,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Play,
+  Save,
+} from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import type { ThemeMode } from '../types/preferences';
 
@@ -9,6 +18,7 @@ interface TitleBarProps {
   sidebarOpen: boolean;
   bottomPanelOpen: boolean;
   inspectorOpen: boolean;
+  isFullscreen: boolean;
   isNarrow: boolean;
   onOpenFolder: () => void;
   onSaveActive: () => void;
@@ -17,6 +27,7 @@ interface TitleBarProps {
   onToggleSidebar: () => void;
   onToggleBottomPanel: () => void;
   onToggleInspector: () => void;
+  onToggleFullscreen: () => void;
 }
 
 export function TitleBar({
@@ -26,6 +37,7 @@ export function TitleBar({
   sidebarOpen,
   bottomPanelOpen,
   inspectorOpen,
+  isFullscreen,
   isNarrow,
   onOpenFolder,
   onSaveActive,
@@ -34,6 +46,7 @@ export function TitleBar({
   onToggleSidebar,
   onToggleBottomPanel,
   onToggleInspector,
+  onToggleFullscreen,
 }: TitleBarProps) {
   return (
     <header
@@ -147,6 +160,25 @@ export function TitleBar({
           onChange={onThemeChange}
           onCycle={onThemeCycle}
         />
+
+        <button
+          type="button"
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          aria-pressed={isFullscreen}
+          title={isFullscreen ? 'Exit fullscreen (F11)' : 'Enter fullscreen (F11)'}
+          onClick={onToggleFullscreen}
+          className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border transition-colors ${
+            isFullscreen
+              ? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent)]'
+              : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          {isFullscreen ? (
+            <Minimize2 className="h-3.5 w-3.5" />
+          ) : (
+            <Maximize2 className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
     </header>
   );

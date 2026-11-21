@@ -1,5 +1,5 @@
 import { AlertTriangle, Terminal, TerminalSquare, X } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { LAYOUT_LIMITS, type BottomTab } from '../types/preferences';
 
 interface BottomPanelProps {
@@ -45,6 +45,7 @@ export function BottomPanel({
 }: BottomPanelProps) {
   const startYRef = useRef(0);
   const startHeightRef = useRef(height);
+  const [isResizing, setIsResizing] = useState(false);
 
   if (!open) {
     return null;
@@ -56,6 +57,11 @@ export function BottomPanel({
     event.preventDefault();
     startYRef.current = event.clientY;
     startHeightRef.current = height;
+    setIsResizing(true);
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
 
     const onMove = (moveEvent: PointerEvent) => {
       const delta = startYRef.current - moveEvent.clientY;
@@ -67,6 +73,9 @@ export function BottomPanel({
     };
 
     const onUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
@@ -87,8 +96,14 @@ export function BottomPanel({
         aria-orientation="horizontal"
         aria-label="Resize bottom panel"
         onPointerDown={handlePointerDown}
-        className="absolute top-0 right-0 left-0 h-1 cursor-row-resize transition-colors hover:bg-[var(--accent)]"
-      />
+        className="group absolute -top-1 right-0 left-0 z-10 flex h-2 cursor-row-resize touch-none items-center"
+      >
+        <span
+          className={`h-0.5 w-full transition-colors duration-150 ${
+            isResizing ? 'bg-[var(--accent)]' : 'bg-transparent group-hover:bg-[var(--accent)]'
+          }`}
+        />
+      </div>
 
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
         <div role="tablist" aria-label="Bottom panel views" className="flex items-center gap-1">

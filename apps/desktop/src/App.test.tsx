@@ -93,6 +93,7 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   }
 
   let prefs = { ...DEFAULT_PREFERENCES };
+  let fullscreen = false;
 
   const listDir = (relDir: string) => {
     if (relDir === '') {
@@ -189,6 +190,11 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
         delete files[relPath];
         return null;
       }
+      case 'is_window_fullscreen':
+        return fullscreen;
+      case 'toggle_window_fullscreen':
+        fullscreen = !fullscreen;
+        return fullscreen;
       default:
         return prefs;
     }
@@ -202,6 +208,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     window.localStorage.clear();
     delete document.documentElement.dataset.theme;
     document.documentElement.style.colorScheme = '';
+    document.documentElement.style.fontSize = '';
+    document.documentElement.style.removeProperty('--editor-font-size');
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     invokeMock.mockReset();
     fsListeners.clear();
@@ -511,5 +519,56 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     });
     expect(screen.getByRole('button', { name: 'Reload from disk' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Keep my edits' })).toBeInTheDocument();
+  });
+
+  it('scales UI and editor zoom with Ctrl+/Ctrl-/Ctrl+0 and persists zoomPercent', async () => {
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%');
+    expect(document.documentElement.style.fontSize).toBe('16px');
+    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('13px');
+
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('110%');
+    expect(document.documentElement.style.fontSize).toBe('17.6px');
+    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('14.3px');
+
+    fireEvent.keyDown(window, { key: '-', ctrlKey: true });
+    fireEvent.keyDown(window, { key: '-', ctrlKey: true });
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('90%');
+    expect(document.documentElement.style.fontSize).toBe('14.4px');
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(PREFS_STORAGE_KEY) ?? '{}');
+      expect(stored.layout?.zoomPercent).toBe(90);
+    });
+
+    fireEvent.keyDown(window, { key: '0', ctrlKey: true });
+    expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%');
+    expect(document.documentElement.style.fontSize).toBe('16px');
+  });
+
+  it('toggles fullscreen via TitleBar button and F11 shortcut', async () => {
+    setupMockRustWorkspace();
+    render(<App />);
+
+    const fsBtn = await screen.findByRole('button', { name: 'Enter fullscreen' });
+    expect(fsBtn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(fsBtn);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Exit fullscreen' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+
+    fireEvent.keyDown(window, { key: 'F11' });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
   });
 });

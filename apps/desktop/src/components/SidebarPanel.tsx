@@ -1,5 +1,5 @@
 import { GitBranch, Search, X } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ExplorerView } from './ExplorerView';
 import { LAYOUT_LIMITS, type SidebarTab } from '../types/preferences';
 import type { FileEntry, WorkspaceInfo } from '../types/workspace';
@@ -69,6 +69,7 @@ export function SidebarPanel({
 }: SidebarPanelProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
+  const [isResizing, setIsResizing] = useState(false);
 
   if (!open) {
     return null;
@@ -81,6 +82,11 @@ export function SidebarPanel({
     event.preventDefault();
     startXRef.current = event.clientX;
     startWidthRef.current = width;
+    setIsResizing(true);
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
 
     const onMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startXRef.current;
@@ -92,6 +98,9 @@ export function SidebarPanel({
     };
 
     const onUp = () => {
+      setIsResizing(false);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
@@ -187,8 +196,14 @@ export function SidebarPanel({
           aria-orientation="vertical"
           aria-label="Resize sidebar"
           onPointerDown={handlePointerDown}
-          className="absolute top-0 right-0 bottom-0 w-1 cursor-col-resize transition-colors hover:bg-[var(--accent)]"
-        />
+          className="group absolute top-0 -right-1 bottom-0 z-10 flex w-2 cursor-col-resize touch-none justify-center"
+        >
+          <span
+            className={`h-full w-0.5 transition-colors duration-150 ${
+              isResizing ? 'bg-[var(--accent)]' : 'bg-transparent group-hover:bg-[var(--accent)]'
+            }`}
+          />
+        </div>
       )}
     </aside>
   );

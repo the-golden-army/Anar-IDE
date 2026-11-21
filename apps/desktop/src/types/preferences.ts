@@ -20,6 +20,7 @@ export interface LayoutState {
   activeBottomTab: BottomTab;
   inspectorOpen: boolean;
   inspectorWidth: number;
+  zoomPercent: number;
 }
 
 export interface AppPreferences {
@@ -36,6 +37,10 @@ export const LAYOUT_LIMITS = {
   maxBottomHeight: 480,
   minInspectorWidth: 200,
   maxInspectorWidth: 480,
+  minZoomPercent: 70,
+  maxZoomPercent: 160,
+  defaultZoomPercent: 100,
+  zoomStep: 10,
 } as const;
 
 export const DEFAULT_LAYOUT: LayoutState = {
@@ -47,6 +52,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
   activeBottomTab: 'output',
   inspectorOpen: false,
   inspectorWidth: 280,
+  zoomPercent: LAYOUT_LIMITS.defaultZoomPercent,
 };
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
@@ -87,6 +93,11 @@ export function sanitizeLayout(layout: Partial<LayoutState> | undefined): Layout
       layout?.inspectorWidth ?? DEFAULT_LAYOUT.inspectorWidth,
       LAYOUT_LIMITS.minInspectorWidth,
       LAYOUT_LIMITS.maxInspectorWidth,
+    ),
+    zoomPercent: clamp(
+      layout?.zoomPercent ?? DEFAULT_LAYOUT.zoomPercent,
+      LAYOUT_LIMITS.minZoomPercent,
+      LAYOUT_LIMITS.maxZoomPercent,
     ),
   };
 }

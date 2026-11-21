@@ -36,6 +36,18 @@ export function applyThemeToDom(resolved: ResolvedTheme): void {
   document.documentElement.style.colorScheme = resolved;
 }
 
+export function applyZoomToDom(zoomPercent: number): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const clamped = Math.min(160, Math.max(70, Math.round(zoomPercent)));
+  document.documentElement.style.fontSize = `${(16 * clamped) / 100}px`;
+  document.documentElement.style.setProperty(
+    '--editor-font-size',
+    `${Number(((13 * clamped) / 100).toFixed(2))}px`,
+  );
+}
+
 export interface UsePreferencesResult {
   preferences: AppPreferences;
   resolvedTheme: ResolvedTheme;
@@ -59,6 +71,10 @@ export function usePreferences(): UsePreferencesResult {
   useEffect(() => {
     applyThemeToDom(resolvedTheme);
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    applyZoomToDom(preferences.layout.zoomPercent);
+  }, [preferences.layout.zoomPercent]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
