@@ -3,6 +3,8 @@
 //! This crate intentionally has **no** dependency on Tauri so that all domain
 //! crates can compile and be tested without a desktop runtime.
 
+pub mod preferences;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
