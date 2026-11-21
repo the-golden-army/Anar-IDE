@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriRuntime } from './preferencesClient';
 
 export async function getFullscreenState(): Promise<boolean> {
@@ -33,4 +34,34 @@ export async function toggleFullscreen(): Promise<boolean> {
     return true;
   }
   return false;
+}
+
+export async function minimizeWindow(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    await getCurrentWindow().minimize();
+  } catch {
+    // Ignore when window API is unavailable in headless environments.
+  }
+}
+
+export async function toggleMaximizeWindow(): Promise<void> {
+  if (!isTauriRuntime()) {
+    await toggleFullscreen();
+    return;
+  }
+  try {
+    await getCurrentWindow().toggleMaximize();
+  } catch {
+    await toggleFullscreen().catch(() => {});
+  }
+}
+
+export async function closeWindow(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  try {
+    await getCurrentWindow().close();
+  } catch {
+    // Ignore when window API is unavailable.
+  }
 }

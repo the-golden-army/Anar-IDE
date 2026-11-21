@@ -1,13 +1,24 @@
 import { AlertTriangle, X } from 'lucide-react';
+import { MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityRail } from './components/ActivityRail';
+import { ArenaAssistantPanel } from './components/ArenaAssistantPanel';
 import { BottomPanel } from './components/BottomPanel';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
 import {
   CodeMirrorEditor,
   type CodeMirrorEditorHandle,
 } from './components/editor/CodeMirrorEditor';
+import { EditorToolbar } from './components/editor/EditorToolbar';
 import { InspectorPanel } from './components/InspectorPanel';
 import { NewProjectModal } from './components/NewProjectModal';
+import {
+  SAMPLE_DIR_CACHE,
+  SAMPLE_FILES,
+  SAMPLE_MAIN_RS,
+  SAMPLE_MAIN_TAB,
+  SAMPLE_WORKSPACE_INFO,
+} from './components/sampleWorkspace';
 import { SidebarPanel } from './components/SidebarPanel';
 import { StatusBar } from './components/StatusBar';
 import { TabBar } from './components/TabBar';
@@ -49,11 +60,23 @@ import {
   startCargoRun,
   stopCargoRun,
 } from './services/runnerClient';
-import { getFullscreenState, toggleFullscreen } from './services/windowClient';
+import {
+  closeWindow,
+  getFullscreenState,
+  minimizeWindow,
+  toggleFullscreen,
+  toggleMaximizeWindow,
+} from './services/windowClient';
 import type { WorkspaceFrameworkReport } from './types/frameworks';
 import type { GitChangedFile, GitDiffResult, GitStatusReport } from './types/git';
 import type { LspLocation, LspStatusEvent } from './types/lsp';
-import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
+import {
+  LAYOUT_LIMITS,
+  type ActivityView,
+  type BottomPanelView,
+  type BottomTab,
+  type SidebarTab,
+} from './types/preferences';
 import type {
   DiagnosticItem,
   OutputLine,
@@ -76,6 +99,20 @@ function parentDirOf(relPath: string): string {
   return slash >= 0 ? relPath.slice(0, slash) : '';
 }
 
+function toPersistedSidebarTab(view: ActivityView): SidebarTab | null {
+  if (view === 'explorer' || view === 'search' || view === 'git') {
+    return view;
+  }
+  return null;
+}
+
+function toPersistedBottomTab(view: BottomPanelView): BottomTab | null {
+  if (view === 'terminal' || view === 'problems' || view === 'output') {
+    return view;
+  }
+  return null;
+}
+
 export function App() {
   const {
     preferences,
@@ -90,13 +127,19 @@ export function App() {
 
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [recentWorkspaces, setRecentWorkspaces] = useState(preferences.recentWorkspaces);
-  const [dirCache, setDirCache] = useState<Record<string, FileEntry[]>>({});
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
-  const [tabs, setTabs] = useState<EditorTab[]>([]);
-  const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
+  const [dirCache, setDirCache] = useState<Record<string, FileEntry[]>>(SAMPLE_DIR_CACHE);
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set(['src']));
+  const [tabs, setTabs] = useState<EditorTab[]>([SAMPLE_MAIN_TAB]);
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(SAMPLE_MAIN_TAB.relativePath);
+  const [activityView, setActivityView] = useState<ActivityView>(layout.activeSidebarTab);
+  const [bottomView, setBottomView] = useState<BottomPanelView>(layout.activeBottomTab);
+  const [assistantOpen, setAssistantOpen] = useState<boolean>(() => !isCompact);
+  const [assistantWidth, setAssistantWidth] = useState<number>(295);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [, setIsFullscreen] = useState(false);
   const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
   const [cargoDiagnostics, setCargoDiagnostics] = useState<DiagnosticItem[]>([]);
   const [lspDiagnosticsByFile, setLspDiagnosticsByFile] = useState<
@@ -122,7 +165,9 @@ export function App() {
   const [gitLoading, setGitLoading] = useState(false);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
-  const initialContentsRef = useRef<Map<string, string>>(new Map());
+  const initialContentsRef = useRef<Map<string, string>>(
+    new Map([[SAMPLE_MAIN_TAB.relativePath, SAMPLE_MAIN_RS]]),
+  );
   const tabsRef = useRef<EditorTab[]>(tabs);
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
   const workspaceRef = useRef<WorkspaceInfo | null>(workspace);
@@ -130,14 +175,36 @@ export function App() {
   const activeRunIdRef = useRef<number | null>(null);
   const pendingRevealRef = useRef<{ path: string; line: number; col: number } | null>(null);
   const lspChangeTimersRef = useRef<Map<string, number>>(new Map());
+  const scratchCounterRef = useRef(0);
 
   tabsRef.current = tabs;
   expandedDirsRef.current = expandedDirs;
   workspaceRef.current = workspace;
 
+  const isSampleWorkspace = workspace === null;
+  const effectiveWorkspace = workspace ?? SAMPLE_WORKSPACE_INFO;
+
   useEffect(() => {
     setRecentWorkspaces(preferences.recentWorkspaces);
   }, [preferences.recentWorkspaces]);
+
+  useEffect(() => {
+    const persisted = toPersistedSidebarTab(activityView);
+    if (persisted && persisted !== layout.activeSidebarTab) {
+      setActivityView(layout.activeSidebarTab);
+    }
+    // Sync when remote preferences load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.activeSidebarTab]);
+
+  useEffect(() => {
+    const persisted = toPersistedBottomTab(bottomView);
+    if (persisted && persisted !== layout.activeBottomTab) {
+      setBottomView(layout.activeBottomTab);
+    }
+    // Sync when remote preferences load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.activeBottomTab]);
 
   const showTransientStatus = useCallback((msg: string) => {
     setStatusMessage(msg);
@@ -230,7 +297,6 @@ export function App() {
       const nextCache: Record<string, FileEntry[]> = { '': info.entries };
       const nextExpanded = new Set<string>();
 
-      // Auto-expand `src/` if present so Rust projects open directly to `src/main.rs` / `lib.rs`.
       const srcDir = info.entries.find((e) => e.isDir && e.name === 'src');
       if (srcDir) {
         try {
@@ -302,6 +368,11 @@ export function App() {
       return;
     }
 
+    if (!workspaceRef.current) {
+      setExpandedDirs((prev) => new Set(prev).add(relPath));
+      return;
+    }
+
     try {
       const entries = await listWorkspaceDir(relPath);
       setDirCache((prev) => ({ ...prev, [relPath]: entries }));
@@ -315,6 +386,27 @@ export function App() {
     setErrorBanner(null);
     const existing = tabsRef.current.find((t) => t.relativePath === relPath);
     if (existing) {
+      setActiveTabPath(relPath);
+      return;
+    }
+
+    if (!workspaceRef.current) {
+      const sampleText = SAMPLE_FILES[relPath];
+      if (sampleText === undefined) return;
+      initialContentsRef.current.set(relPath, sampleText);
+      const sampleTab: EditorTab = {
+        relativePath: relPath,
+        name: relPath.split('/').pop() ?? relPath,
+        dirty: false,
+        isLargeFile: false,
+        lineEnding: 'lf',
+        sizeBytes: sampleText.length,
+        modifiedMs: 0,
+        externallyModified: false,
+        deletedOnDisk: false,
+        cursor: { line: 1, col: 1 },
+      };
+      setTabs((prev) => [...prev, sampleTab]);
       setActiveTabPath(relPath);
       return;
     }
@@ -346,7 +438,7 @@ export function App() {
 
   const handleSaveTab = useCallback(
     async (targetPath: string | null) => {
-      if (!targetPath) return;
+      if (!targetPath || !workspaceRef.current) return;
       const content = editorRef.current?.getDocumentText(targetPath);
       if (content === null || content === undefined) return;
 
@@ -422,7 +514,7 @@ export function App() {
         window.clearTimeout(pendingTimer);
         lspChangeTimersRef.current.delete(relPath);
       }
-      if (relPath.toLowerCase().endsWith('.rs')) {
+      if (workspaceRef.current && relPath.toLowerCase().endsWith('.rs')) {
         void lspDidClose(relPath).catch(() => {});
       }
       editorRef.current?.dropTabBuffer(relPath);
@@ -439,6 +531,33 @@ export function App() {
     },
     [activeTabPath],
   );
+
+  const handleNewScratchTab = useCallback(() => {
+    if (!workspaceRef.current) {
+      scratchCounterRef.current += 1;
+      const name = `untitled-${scratchCounterRef.current}.rs`;
+      const content = 'fn main() {\n    println!("New buffer");\n}\n';
+      initialContentsRef.current.set(name, content);
+      setTabs((prev) => [
+        ...prev,
+        {
+          relativePath: name,
+          name,
+          dirty: false,
+          isLargeFile: false,
+          lineEnding: 'lf',
+          sizeBytes: content.length,
+          modifiedMs: 0,
+          externallyModified: false,
+          deletedOnDisk: false,
+          cursor: { line: 1, col: 1 },
+        },
+      ]);
+      setActiveTabPath(name);
+      return;
+    }
+    setActiveTabPath(null);
+  }, []);
 
   const handleCreateFile = useCallback(
     async (relPath: string) => {
@@ -506,7 +625,6 @@ export function App() {
     [handleCloseTab, refreshDirectory],
   );
 
-  // Listen to external filesystem notifications from `anar-workspace` watcher.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let disposed = false;
@@ -599,30 +717,44 @@ export function App() {
     );
   }, []);
 
-  const toggleSidebar = () => {
-    updateLayout((prev) => ({ ...prev, sidebarOpen: !prev.sidebarOpen }));
-  };
-
-  const toggleBottomPanel = () => {
-    updateLayout((prev) => ({ ...prev, bottomPanelOpen: !prev.bottomPanelOpen }));
-  };
-
-  const toggleInspector = () => {
-    updateLayout((prev) => ({ ...prev, inspectorOpen: !prev.inspectorOpen }));
-  };
-
-  const handleRailSelect = (tab: SidebarTab) => {
-    updateLayout((prev) => {
-      if (prev.sidebarOpen && prev.activeSidebarTab === tab) {
-        return { ...prev, sidebarOpen: false };
+  const handleSelectActivityView = useCallback(
+    (view: ActivityView) => {
+      if (layout.sidebarOpen && activityView === view) {
+        updateLayout((prev) => ({ ...prev, sidebarOpen: false }));
+        return;
       }
-      return { ...prev, sidebarOpen: true, activeSidebarTab: tab };
-    });
-  };
+      setActivityView(view);
+      const persisted = toPersistedSidebarTab(view);
+      updateLayout((prev) => ({
+        ...prev,
+        sidebarOpen: true,
+        activeSidebarTab: persisted ?? prev.activeSidebarTab,
+      }));
+    },
+    [activityView, layout.sidebarOpen, updateLayout],
+  );
 
-  const handleBottomTabSelect = (tab: BottomTab) => {
-    updateLayout((prev) => ({ ...prev, bottomPanelOpen: true, activeBottomTab: tab }));
-  };
+  const handleSelectBottomView = useCallback(
+    (view: BottomPanelView) => {
+      setBottomView(view);
+      const persisted = toPersistedBottomTab(view);
+      updateLayout((prev) => ({
+        ...prev,
+        bottomPanelOpen: true,
+        activeBottomTab: persisted ?? prev.activeBottomTab,
+      }));
+    },
+    [updateLayout],
+  );
+
+  const toggleInspector = useCallback(() => {
+    updateLayout((prev) => ({ ...prev, inspectorOpen: !prev.inspectorOpen }));
+  }, [updateLayout]);
+
+  const toggleAssistant = useCallback(() => {
+    updateLayout((prev) => (prev.inspectorOpen ? { ...prev, inspectorOpen: false } : prev));
+    setAssistantOpen((prev) => !prev);
+  }, [updateLayout]);
 
   const adjustZoom = useCallback(
     (delta: number) => {
@@ -659,7 +791,6 @@ export function App() {
         return;
       }
 
-      // Save all dirty tabs before invoking Cargo so edits are included immediately.
       const dirtyTabs = tabsRef.current.filter((t) => t.dirty);
       for (const dirtyTab of dirtyTabs) {
         await handleSaveTab(dirtyTab.relativePath);
@@ -671,6 +802,7 @@ export function App() {
       setLastExitSummary(null);
       setIsRunning(true);
       setActiveRunAction(action);
+      setBottomView('output');
       updateLayout((prev) => ({
         ...prev,
         bottomPanelOpen: true,
@@ -738,6 +870,7 @@ export function App() {
       setIsRunning(true);
       setActiveRunAction('run');
       setSelectedProfileId(profileId);
+      setBottomView('output');
       updateLayout((prev) => ({
         ...prev,
         bottomPanelOpen: true,
@@ -834,7 +967,7 @@ export function App() {
   );
 
   const handleDocumentChange = useCallback((relPath: string, content: string) => {
-    if (!relPath.toLowerCase().endsWith('.rs')) {
+    if (!workspaceRef.current || !relPath.toLowerCase().endsWith('.rs')) {
       return;
     }
     const prevTimer = lspChangeTimersRef.current.get(relPath);
@@ -1052,7 +1185,10 @@ export function App() {
         return;
       }
       const key = event.key.toLowerCase();
-      if (
+      if (key === 'k' && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      } else if (
         (event.key === '+' ||
           event.key === '=' ||
           event.code === 'Equal' ||
@@ -1108,6 +1244,7 @@ export function App() {
         updateLayout((prev) => ({ ...prev, bottomPanelOpen: !prev.bottomPanelOpen }));
       } else if (key === 'f' && event.shiftKey && !event.altKey) {
         event.preventDefault();
+        setActivityView('search');
         updateLayout((prev) => ({
           ...prev,
           sidebarOpen: true,
@@ -1170,16 +1307,6 @@ export function App() {
     return diagnostics.filter((d) => d.primarySpan?.fileName === activeTabPath);
   }, [activeTabPath, diagnostics]);
 
-  const errorCount = useMemo(
-    () => diagnostics.filter((d) => d.severity === 'error').length,
-    [diagnostics],
-  );
-
-  const warningCount = useMemo(
-    () => diagnostics.filter((d) => d.severity === 'warning').length,
-    [diagnostics],
-  );
-
   const dirtyPaths = useMemo(
     () => new Set(tabs.filter((t) => t.dirty).map((t) => t.relativePath)),
     [tabs],
@@ -1189,260 +1316,299 @@ export function App() {
     ? (initialContentsRef.current.get(activeTab.relativePath) ?? '')
     : '';
 
+  const gitBadgeCount = isSampleWorkspace ? 3 : (gitStatus?.entries.length ?? 0);
+
   return (
-    <div
-      className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]"
-      data-testid="app-shell"
-    >
-      <TitleBar
-        workspaceName={workspace?.name ?? null}
-        hasUnsavedActiveTab={Boolean(activeTab?.dirty)}
-        isRunning={isRunning}
-        activeRunAction={activeRunAction}
-        compilerBackend={preferences.compilerBackend}
-        themeMode={preferences.theme}
-        sidebarOpen={layout.sidebarOpen}
-        bottomPanelOpen={layout.bottomPanelOpen}
-        inspectorOpen={layout.inspectorOpen}
-        isFullscreen={isFullscreen}
-        isNarrow={isNarrow}
-        onOpenFolder={() => void handleOpenFolder()}
-        onSaveActive={() => void handleSaveTab(activeTabPath)}
-        onRunAction={(action) => void handleRunAction(action)}
-        onStopRun={() => void handleStopRun()}
-        onThemeChange={setThemeMode}
-        onThemeCycle={cycleThemeMode}
-        onToggleSidebar={toggleSidebar}
-        onToggleBottomPanel={toggleBottomPanel}
-        onToggleInspector={toggleInspector}
-        onToggleFullscreen={() => void handleToggleFullscreen()}
-      />
-
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <ActivityRail
-          activeTab={layout.activeSidebarTab}
-          sidebarOpen={layout.sidebarOpen}
-          onSelectTab={handleRailSelect}
+    <MotionConfig reducedMotion="user">
+      <div
+        className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]"
+        data-testid="app-shell"
+      >
+        <TitleBar
+          resolvedTheme={resolvedTheme}
+          isNarrow={isNarrow}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onToggleLightDark={() => setThemeMode(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          onOpenSettings={() => handleSelectActivityView('settings')}
+          onMinimizeWindow={() => void minimizeWindow()}
+          onToggleMaximizeWindow={() => void toggleMaximizeWindow()}
+          onCloseWindow={() => void closeWindow()}
         />
 
-        <SidebarPanel
-          open={layout.sidebarOpen}
-          width={layout.sidebarWidth}
-          activeTab={layout.activeSidebarTab}
-          isCompact={isCompact}
-          workspace={workspace}
-          dirCache={dirCache}
-          expandedDirs={expandedDirs}
-          activeFilePath={activeTabPath}
-          dirtyPaths={dirtyPaths}
-          searchResult={searchResult}
-          isSearching={isSearching}
-          gitStatus={gitStatus}
-          selectedGitDiff={selectedGitDiff}
-          gitLoading={gitLoading}
-          onClose={() => updateLayout((prev) => ({ ...prev, sidebarOpen: false }))}
-          onResize={(sidebarWidth) => updateLayout((prev) => ({ ...prev, sidebarWidth }))}
-          onSelectTab={(activeSidebarTab) =>
-            updateLayout((prev) => ({ ...prev, activeSidebarTab }))
-          }
-          onOpenFolder={() => void handleOpenFolder()}
-          onRefreshExplorer={() => void handleRefreshExplorer()}
-          onToggleDir={(relPath) => void handleToggleDir(relPath)}
-          onSelectFile={(relPath) => void handleOpenFile(relPath)}
-          onCreateFile={handleCreateFile}
-          onCreateDir={handleCreateDir}
-          onRenameEntry={handleRenameEntry}
-          onDeleteEntry={handleDeleteEntry}
-          onSearchWorkspace={(query, caseSensitive) =>
-            void handleSearchWorkspace(query, caseSensitive)
-          }
-          onOpenLocation={(loc) => void handleNavigateLocation(loc)}
-          onRefreshGit={() => void refreshGitStatus()}
-          onSelectGitDiff={(entry) => void handleSelectGitDiff(entry)}
-          onStageGitFile={(relPath) => void handleStageGitFile(relPath)}
-          onUnstageGitFile={(relPath) => void handleUnstageGitFile(relPath)}
-        />
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-app)]">
-          <TabBar
-            tabs={tabs}
-            activeTabPath={activeTabPath}
-            onSelectTab={(relPath) => setActiveTabPath(relPath)}
-            onCloseTab={handleCloseTab}
-            onShowWelcome={() => setActiveTabPath(null)}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <ActivityRail
+            activeView={activityView}
+            sidebarOpen={layout.sidebarOpen}
+            gitChangeCount={gitBadgeCount}
+            onSelectView={handleSelectActivityView}
           />
 
-          {errorBanner && (
-            <div
-              role="alert"
-              className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--status-err)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--status-err)]"
-            >
-              <span className="truncate">{errorBanner}</span>
-              <button
-                type="button"
-                aria-label="Dismiss error"
-                onClick={() => setErrorBanner(null)}
-                className="rounded p-0.5 hover:bg-[var(--bg-hover)]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
+          <SidebarPanel
+            open={layout.sidebarOpen}
+            width={layout.sidebarWidth}
+            activeView={activityView}
+            isCompact={isCompact}
+            workspace={effectiveWorkspace}
+            isSampleWorkspace={isSampleWorkspace}
+            dirCache={dirCache}
+            expandedDirs={expandedDirs}
+            activeFilePath={activeTabPath}
+            dirtyPaths={dirtyPaths}
+            searchResult={searchResult}
+            isSearching={isSearching}
+            gitStatus={gitStatus}
+            selectedGitDiff={selectedGitDiff}
+            gitLoading={gitLoading}
+            themeMode={preferences.theme}
+            zoomPercent={layout.zoomPercent}
+            compilerBackend={preferences.compilerBackend}
+            lspStatus={lspStatus}
+            isRunning={isRunning}
+            onClose={() => updateLayout((prev) => ({ ...prev, sidebarOpen: false }))}
+            onResize={(sidebarWidth) => updateLayout((prev) => ({ ...prev, sidebarWidth }))}
+            onOpenFolder={() => void handleOpenFolder()}
+            onNewProject={() => setNewProjectModalOpen(true)}
+            onRefreshExplorer={() => void handleRefreshExplorer()}
+            onToggleDir={(relPath) => void handleToggleDir(relPath)}
+            onSelectFile={(relPath) => void handleOpenFile(relPath)}
+            onCreateFile={handleCreateFile}
+            onCreateDir={handleCreateDir}
+            onRenameEntry={handleRenameEntry}
+            onDeleteEntry={handleDeleteEntry}
+            onSearchWorkspace={(query, caseSensitive) =>
+              void handleSearchWorkspace(query, caseSensitive)
+            }
+            onOpenLocation={(loc) => void handleNavigateLocation(loc)}
+            onRefreshGit={() => void refreshGitStatus()}
+            onSelectGitDiff={(entry) => void handleSelectGitDiff(entry)}
+            onStageGitFile={(relPath) => void handleStageGitFile(relPath)}
+            onUnstageGitFile={(relPath) => void handleUnstageGitFile(relPath)}
+            onRunAction={(action) => void handleRunAction(action)}
+            onOpenDebugConsole={() => handleSelectBottomView('debug-console')}
+            onThemeChange={setThemeMode}
+            onThemeCycle={cycleThemeMode}
+            onZoomOut={() => adjustZoom(-LAYOUT_LIMITS.zoomStep)}
+            onZoomReset={resetZoom}
+            onZoomIn={() => adjustZoom(LAYOUT_LIMITS.zoomStep)}
+            onOpenInspector={() => updateLayout((prev) => ({ ...prev, inspectorOpen: true }))}
+          />
 
-          {activeTab && (activeTab.externallyModified || activeTab.deletedOnDisk) && (
-            <div
-              role="status"
-              data-testid="external-change-banner"
-              className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--status-warn)] bg-[var(--accent-muted)] px-3 py-1.5 text-xs text-[var(--text-primary)]"
-            >
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--status-warn)]" />
-                <span>
-                  {activeTab.deletedOnDisk
-                    ? `${activeTab.name} was deleted on disk.`
-                    : `${activeTab.name} changed on disk while you have unsaved edits.`}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {!activeTab.deletedOnDisk && (
-                  <button
-                    type="button"
-                    onClick={() => void handleReloadFromDisk(activeTab.relativePath)}
-                    className="rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-0.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
-                  >
-                    Reload from disk
-                  </button>
-                )}
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg-editor)]">
+            <TabBar
+              tabs={tabs}
+              activeTabPath={activeTabPath}
+              assistantOpen={assistantOpen && !layout.inspectorOpen}
+              inspectorOpen={layout.inspectorOpen}
+              onSelectTab={(relPath) => setActiveTabPath(relPath)}
+              onCloseTab={handleCloseTab}
+              onNewTab={handleNewScratchTab}
+              onToggleAssistant={toggleAssistant}
+              onToggleInspector={toggleInspector}
+            />
+
+            <EditorToolbar
+              hasWorkspace={!isSampleWorkspace}
+              hasUnsavedActiveTab={Boolean(activeTab?.dirty && !isSampleWorkspace)}
+              isRunning={isRunning}
+              activeRunAction={activeRunAction}
+              compilerBackend={preferences.compilerBackend}
+              onRunAction={(action) => void handleRunAction(action)}
+              onStopRun={() => void handleStopRun()}
+              onDebugAction={() => handleSelectBottomView('debug-console')}
+              onSaveActive={() => void handleSaveTab(activeTabPath)}
+            />
+
+            {errorBanner && (
+              <div
+                role="alert"
+                className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--status-err)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--status-err)]"
+              >
+                <span className="truncate">{errorBanner}</span>
                 <button
                   type="button"
-                  onClick={() =>
-                    setTabs((prev) =>
-                      prev.map((t) =>
-                        t.relativePath === activeTab.relativePath
-                          ? { ...t, externallyModified: false, deletedOnDisk: false }
-                          : t,
-                      ),
-                    )
-                  }
-                  className="rounded-[var(--radius-sm)] px-2 py-0.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  aria-label="Dismiss error"
+                  onClick={() => setErrorBanner(null)}
+                  className="rounded p-0.5 hover:bg-[var(--bg-hover)]"
                 >
-                  Keep my edits
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-            </div>
-          )}
-
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {activeTab ? (
-              <CodeMirrorEditor
-                ref={editorRef}
-                relativePath={activeTab.relativePath}
-                initialContent={activeInitialContent}
-                isLargeFile={activeTab.isLargeFile}
-                resolvedTheme={resolvedTheme}
-                lspReady={lspReady}
-                activeDiagnostics={activeFileDiagnostics}
-                onDirtyChange={handleDirtyChange}
-                onCursorChange={handleCursorChange}
-                onDocumentChange={handleDocumentChange}
-                onSaveRequested={() => void handleSaveTab(activeTab.relativePath)}
-                onNavigateLocation={(loc) => void handleNavigateLocation(loc)}
-              />
-            ) : (
-              <WelcomeScreen
-                recentWorkspaces={recentWorkspaces}
-                onOpenFolder={() => void handleOpenFolder()}
-                onNewProject={() => setNewProjectModalOpen(true)}
-                onOpenRecent={(path) => void handleOpenRecent(path)}
-              />
             )}
-          </div>
 
-          <BottomPanel
-            open={layout.bottomPanelOpen}
-            height={layout.bottomPanelHeight}
-            activeTab={layout.activeBottomTab}
-            workspaceKey={workspace?.rootPath ?? null}
-            resolvedTheme={resolvedTheme}
-            outputLines={outputLines}
-            diagnostics={diagnostics}
-            isRunning={isRunning}
-            activeRunAction={activeRunAction}
-            lastExitSummary={lastExitSummary}
-            onClose={() => updateLayout((prev) => ({ ...prev, bottomPanelOpen: false }))}
-            onResize={(bottomPanelHeight) =>
-              updateLayout((prev) => ({ ...prev, bottomPanelHeight }))
-            }
-            onSelectTab={handleBottomTabSelect}
-            onClearOutput={() => {
-              setOutputLines([]);
-              setLastExitSummary(null);
-            }}
-            onStopRun={() => void handleStopRun()}
-            onSendStdin={(input) => void handleSendStdin(input)}
-            onSelectDiagnostic={(diag) => void handleSelectDiagnostic(diag)}
-          />
-        </main>
+            {activeTab && (activeTab.externallyModified || activeTab.deletedOnDisk) && (
+              <div
+                role="status"
+                data-testid="external-change-banner"
+                className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--status-warn)] bg-[var(--accent-muted)] px-3 py-1.5 text-xs text-[var(--text-primary)]"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--status-warn)]" />
+                  <span>
+                    {activeTab.deletedOnDisk
+                      ? `${activeTab.name} was deleted on disk.`
+                      : `${activeTab.name} changed on disk while you have unsaved edits.`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {!activeTab.deletedOnDisk && (
+                    <button
+                      type="button"
+                      onClick={() => void handleReloadFromDisk(activeTab.relativePath)}
+                      className="rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 py-0.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
+                    >
+                      Reload from disk
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTabs((prev) =>
+                        prev.map((t) =>
+                          t.relativePath === activeTab.relativePath
+                            ? { ...t, externallyModified: false, deletedOnDisk: false }
+                            : t,
+                        ),
+                      )
+                    }
+                    className="rounded-[var(--radius-sm)] px-2 py-0.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  >
+                    Keep my edits
+                  </button>
+                </div>
+              </div>
+            )}
 
-        <InspectorPanel
-          open={layout.inspectorOpen}
-          width={layout.inspectorWidth}
-          isCompact={isCompact}
-          lspStatus={lspStatus}
-          compilerBackend={preferences.compilerBackend}
-          rusturboStatus={rusturboStatus}
-          rusturboAnalysis={rusturboAnalysis}
-          rusturboBusy={rusturboBusy}
-          frameworkReport={frameworkReport}
-          selectedProfileId={selectedProfileId}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {activeTab ? (
+                <CodeMirrorEditor
+                  ref={editorRef}
+                  relativePath={activeTab.relativePath}
+                  initialContent={activeInitialContent}
+                  isLargeFile={activeTab.isLargeFile}
+                  resolvedTheme={resolvedTheme}
+                  lspReady={lspReady}
+                  activeDiagnostics={activeFileDiagnostics}
+                  onDirtyChange={handleDirtyChange}
+                  onCursorChange={handleCursorChange}
+                  onDocumentChange={handleDocumentChange}
+                  onSaveRequested={() => void handleSaveTab(activeTab.relativePath)}
+                  onNavigateLocation={(loc) => void handleNavigateLocation(loc)}
+                />
+              ) : (
+                <WelcomeScreen
+                  recentWorkspaces={recentWorkspaces}
+                  onOpenFolder={() => void handleOpenFolder()}
+                  onNewProject={() => setNewProjectModalOpen(true)}
+                  onOpenRecent={(path) => void handleOpenRecent(path)}
+                />
+              )}
+            </div>
+
+            <BottomPanel
+              open={layout.bottomPanelOpen}
+              height={layout.bottomPanelHeight}
+              activeTab={bottomView}
+              workspaceKey={workspace?.rootPath ?? null}
+              resolvedTheme={resolvedTheme}
+              outputLines={outputLines}
+              diagnostics={diagnostics}
+              isRunning={isRunning}
+              activeRunAction={activeRunAction}
+              lastExitSummary={lastExitSummary}
+              onClose={() => updateLayout((prev) => ({ ...prev, bottomPanelOpen: false }))}
+              onResize={(bottomPanelHeight) =>
+                updateLayout((prev) => ({ ...prev, bottomPanelHeight }))
+              }
+              onSelectTab={handleSelectBottomView}
+              onClearOutput={() => {
+                setOutputLines([]);
+                setLastExitSummary(null);
+              }}
+              onStopRun={() => void handleStopRun()}
+              onSendStdin={(input) => void handleSendStdin(input)}
+              onSelectDiagnostic={(diag) => void handleSelectDiagnostic(diag)}
+            />
+          </main>
+
+          {layout.inspectorOpen ? (
+            <InspectorPanel
+              open={layout.inspectorOpen}
+              width={layout.inspectorWidth}
+              isCompact={isCompact}
+              lspStatus={lspStatus}
+              compilerBackend={preferences.compilerBackend}
+              rusturboStatus={rusturboStatus}
+              rusturboAnalysis={rusturboAnalysis}
+              rusturboBusy={rusturboBusy}
+              frameworkReport={frameworkReport}
+              selectedProfileId={selectedProfileId}
+              isRunning={isRunning}
+              hasWorkspace={workspace !== null}
+              canFormat={
+                lspReady &&
+                Boolean(activeTab) &&
+                !activeTab?.isLargeFile &&
+                Boolean(activeTab?.relativePath.toLowerCase().endsWith('.rs'))
+              }
+              onRestartLsp={() => void handleRestartLsp()}
+              onFormatDocument={() => void handleFormatDocument()}
+              onSelectCompilerBackend={setCompilerBackend}
+              onAnalyzeRusturbo={() => void handleAnalyzeRusturbo()}
+              onInitRusturboConfig={() => void handleInitRusturboConfig()}
+              onSelectProfile={(profileId) => setSelectedProfileId(profileId)}
+              onRunProfile={(profileId) => void handleRunProfile(profileId)}
+              onClose={() => updateLayout((prev) => ({ ...prev, inspectorOpen: false }))}
+              onResize={(inspectorWidth) => updateLayout((prev) => ({ ...prev, inspectorWidth }))}
+            />
+          ) : (
+            <ArenaAssistantPanel
+              open={assistantOpen}
+              width={assistantWidth}
+              isCompact={isCompact}
+              onClose={() => setAssistantOpen(false)}
+              onResize={setAssistantWidth}
+            />
+          )}
+        </div>
+
+        <StatusBar
+          activeTab={activeTab}
+          branchName={gitStatus?.branch ?? 'main'}
+          statusMessage={statusMessage}
           isRunning={isRunning}
-          hasWorkspace={workspace !== null}
-          canFormat={
-            lspReady &&
-            Boolean(activeTab) &&
-            !activeTab?.isLargeFile &&
-            Boolean(activeTab?.relativePath.toLowerCase().endsWith('.rs'))
+          compilerBackend={preferences.compilerBackend}
+          lspStatus={lspStatus}
+          detectedFrameworks={frameworkReport?.detected ?? []}
+          isNarrow={isNarrow}
+          onRefreshGit={() => void refreshGitStatus()}
+          onOpenInspector={toggleInspector}
+          onOpenSettings={() => handleSelectActivityView('settings')}
+        />
+
+        <CommandPaletteModal
+          open={commandPaletteOpen}
+          hasWorkspace={!isSampleWorkspace}
+          onClose={() => setCommandPaletteOpen(false)}
+          onSelectFile={(relPath) => void handleOpenFile(relPath)}
+          onOpenFolder={() => void handleOpenFolder()}
+          onNewProject={() => setNewProjectModalOpen(true)}
+          onRun={() => void handleRunAction('run')}
+          onBuild={() => void handleRunAction('build')}
+          onToggleTerminal={() =>
+            updateLayout((prev) => ({ ...prev, bottomPanelOpen: !prev.bottomPanelOpen }))
           }
-          onRestartLsp={() => void handleRestartLsp()}
-          onFormatDocument={() => void handleFormatDocument()}
-          onSelectCompilerBackend={setCompilerBackend}
-          onAnalyzeRusturbo={() => void handleAnalyzeRusturbo()}
-          onInitRusturboConfig={() => void handleInitRusturboConfig()}
-          onSelectProfile={(profileId) => setSelectedProfileId(profileId)}
-          onRunProfile={(profileId) => void handleRunProfile(profileId)}
-          onClose={() => updateLayout((prev) => ({ ...prev, inspectorOpen: false }))}
-          onResize={(inspectorWidth) => updateLayout((prev) => ({ ...prev, inspectorWidth }))}
+          onToggleAssistant={toggleAssistant}
+          onToggleInspector={toggleInspector}
+          onToggleTheme={() => setThemeMode(resolvedTheme === 'dark' ? 'light' : 'dark')}
+        />
+
+        <NewProjectModal
+          open={newProjectModalOpen}
+          onClose={() => setNewProjectModalOpen(false)}
+          onCreated={hydrateWorkspace}
         />
       </div>
-
-      <StatusBar
-        activeTab={activeTab}
-        statusMessage={statusMessage}
-        isRunning={isRunning}
-        compilerBackend={preferences.compilerBackend}
-        lspStatus={lspStatus}
-        detectedFrameworks={frameworkReport?.detected ?? []}
-        errorCount={errorCount}
-        warningCount={warningCount}
-        themeMode={preferences.theme}
-        resolvedTheme={resolvedTheme}
-        zoomPercent={layout.zoomPercent}
-        isNarrow={isNarrow}
-        onOpenProblems={() =>
-          updateLayout((prev) => ({ ...prev, bottomPanelOpen: true, activeBottomTab: 'problems' }))
-        }
-        onCycleTheme={cycleThemeMode}
-        onZoomOut={() => adjustZoom(-LAYOUT_LIMITS.zoomStep)}
-        onZoomReset={resetZoom}
-        onZoomIn={() => adjustZoom(LAYOUT_LIMITS.zoomStep)}
-      />
-
-      <NewProjectModal
-        open={newProjectModalOpen}
-        onClose={() => setNewProjectModalOpen(false)}
-        onCreated={hydrateWorkspace}
-      />
-    </div>
+    </MotionConfig>
   );
 }
 

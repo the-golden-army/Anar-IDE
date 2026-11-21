@@ -6,7 +6,11 @@ export type CompilerBackend = 'cargo' | 'rusturbo';
 
 export type SidebarTab = 'explorer' | 'search' | 'git';
 
+export type ActivityView = SidebarTab | 'debug' | 'extensions' | 'settings' | 'about';
+
 export type BottomTab = 'output' | 'problems' | 'terminal';
+
+export type BottomPanelView = BottomTab | 'debug-console';
 
 export interface RecentWorkspace {
   name: string;
@@ -38,7 +42,7 @@ export const LAYOUT_LIMITS = {
   maxSidebarWidth: 480,
   minBottomHeight: 120,
   maxBottomHeight: 480,
-  minInspectorWidth: 200,
+  minInspectorWidth: 220,
   maxInspectorWidth: 480,
   minZoomPercent: 70,
   maxZoomPercent: 160,
@@ -48,19 +52,19 @@ export const LAYOUT_LIMITS = {
 
 export const DEFAULT_LAYOUT: LayoutState = {
   sidebarOpen: true,
-  sidebarWidth: 260,
+  sidebarWidth: 235,
   activeSidebarTab: 'explorer',
   bottomPanelOpen: true,
-  bottomPanelHeight: 200,
-  activeBottomTab: 'output',
+  bottomPanelHeight: 224,
+  activeBottomTab: 'terminal',
   inspectorOpen: false,
-  inspectorWidth: 280,
+  inspectorWidth: 295,
   zoomPercent: LAYOUT_LIMITS.defaultZoomPercent,
 };
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
   version: 1,
-  theme: 'system',
+  theme: 'dark',
   compilerBackend: 'cargo',
   layout: DEFAULT_LAYOUT,
   recentWorkspaces: [],
@@ -89,9 +93,11 @@ export function sanitizeLayout(layout: Partial<LayoutState> | undefined): Layout
       LAYOUT_LIMITS.maxBottomHeight,
     ),
     activeBottomTab:
-      layout?.activeBottomTab === 'problems' || layout?.activeBottomTab === 'terminal'
+      layout?.activeBottomTab === 'problems' ||
+      layout?.activeBottomTab === 'terminal' ||
+      layout?.activeBottomTab === 'output'
         ? layout.activeBottomTab
-        : 'output',
+        : DEFAULT_LAYOUT.activeBottomTab,
     inspectorOpen: layout?.inspectorOpen ?? DEFAULT_LAYOUT.inspectorOpen,
     inspectorWidth: clamp(
       layout?.inspectorWidth ?? DEFAULT_LAYOUT.inspectorWidth,

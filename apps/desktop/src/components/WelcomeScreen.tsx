@@ -1,4 +1,6 @@
 import { FolderOpen, Keyboard, Plus, Sparkles } from 'lucide-react';
+import { AnarLogo } from './AnarLogo';
+import { ANAR_VERSION_LABEL } from './sampleWorkspace';
 import type { RecentWorkspace } from '../types/preferences';
 
 const ECOSYSTEM_TARGETS = [
@@ -43,11 +45,8 @@ export function WelcomeScreen({
       <div className="w-full max-w-2xl space-y-6">
         <header className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-lg)] bg-[var(--accent)] text-lg font-bold text-[var(--text-on-accent)] shadow-sm"
-              aria-hidden="true"
-            >
-              A
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-lg)] border border-[var(--accent-ring)] bg-[var(--accent-muted)] shadow-sm">
+              <AnarLogo className="h-7 w-7" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -55,7 +54,7 @@ export function WelcomeScreen({
                   Anar
                 </h1>
                 <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]">
-                  v0.1.0
+                  {ANAR_VERSION_LABEL}
                 </span>
               </div>
               <p className="text-xs text-[var(--text-secondary)] sm:text-sm">

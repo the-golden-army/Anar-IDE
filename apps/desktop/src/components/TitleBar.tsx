@@ -1,280 +1,130 @@
-import {
-  CheckCircle2,
-  FlaskConical,
-  FolderOpen,
-  Hammer,
-  Maximize2,
-  Minimize2,
-  PanelBottom,
-  PanelLeft,
-  PanelRight,
-  Play,
-  Save,
-  Square,
-} from 'lucide-react';
-import { ThemeSwitcher } from './ThemeSwitcher';
-import type { CompilerBackend, ThemeMode } from '../types/preferences';
-import type { RunnerAction } from '../types/runner';
+import { Minus, Moon, Search, Settings, Square, Sun, X } from 'lucide-react';
+import { AnarLogo } from './AnarLogo';
+import { ANAR_VERSION_LABEL } from './sampleWorkspace';
+import type { ResolvedTheme } from '../types/preferences';
 
 interface TitleBarProps {
-  workspaceName: string | null;
-  hasUnsavedActiveTab: boolean;
-  isRunning: boolean;
-  activeRunAction: RunnerAction | null;
-  compilerBackend: CompilerBackend;
-  themeMode: ThemeMode;
-  sidebarOpen: boolean;
-  bottomPanelOpen: boolean;
-  inspectorOpen: boolean;
-  isFullscreen: boolean;
+  resolvedTheme: ResolvedTheme;
   isNarrow: boolean;
-  onOpenFolder: () => void;
-  onSaveActive: () => void;
-  onRunAction: (action: RunnerAction) => void;
-  onStopRun: () => void;
-  onThemeChange: (mode: ThemeMode) => void;
-  onThemeCycle: () => void;
-  onToggleSidebar: () => void;
-  onToggleBottomPanel: () => void;
-  onToggleInspector: () => void;
-  onToggleFullscreen: () => void;
+  onOpenCommandPalette: () => void;
+  onToggleLightDark: () => void;
+  onOpenSettings: () => void;
+  onMinimizeWindow: () => void;
+  onToggleMaximizeWindow: () => void;
+  onCloseWindow: () => void;
 }
 
 export function TitleBar({
-  workspaceName,
-  hasUnsavedActiveTab,
-  isRunning,
-  activeRunAction,
-  compilerBackend,
-  themeMode,
-  sidebarOpen,
-  bottomPanelOpen,
-  inspectorOpen,
-  isFullscreen,
+  resolvedTheme,
   isNarrow,
-  onOpenFolder,
-  onSaveActive,
-  onRunAction,
-  onStopRun,
-  onThemeChange,
-  onThemeCycle,
-  onToggleSidebar,
-  onToggleBottomPanel,
-  onToggleInspector,
-  onToggleFullscreen,
+  onOpenCommandPalette,
+  onToggleLightDark,
+  onOpenSettings,
+  onMinimizeWindow,
+  onToggleMaximizeWindow,
+  onCloseWindow,
 }: TitleBarProps) {
-  const hasWorkspace = workspaceName !== null;
+  const isDark = resolvedTheme === 'dark';
+
   return (
     <header
-      className="flex h-[var(--titlebar-height)] shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 select-none"
+      className="grid h-[var(--titlebar-height)] shrink-0 grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 select-none"
       data-testid="titlebar"
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-xs font-bold text-[var(--text-on-accent)]"
-          aria-hidden="true"
+      <div className="flex min-w-0 items-center gap-2">
+        <AnarLogo className="h-5 w-5 shrink-0" />
+        <span className="text-[13px] font-semibold tracking-tight text-[var(--text-primary)]">
+          Anar
+        </span>
+        <span className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-[family-name:var(--font-mono)] text-[10px] font-medium text-[var(--text-secondary)]">
+          {ANAR_VERSION_LABEL}
+        </span>
+      </div>
+
+      <div className="flex justify-center px-2">
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          aria-label="Search anything"
+          data-testid="global-search-trigger"
+          className="flex h-7 w-full max-w-[440px] items-center justify-between gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-xs text-[var(--text-muted)] transition-colors duration-150 hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
         >
-          A
-        </div>
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">
-            Anar
+          <span className="flex min-w-0 items-center gap-2">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+            <span className="truncate">Search anything...</span>
           </span>
           {!isNarrow && (
-            <span className="truncate text-xs text-[var(--text-muted)]">
-              {workspaceName ?? 'No project open'}
-            </span>
+            <kbd className="shrink-0 font-[family-name:var(--font-sans)] text-[11px] font-medium text-[var(--text-muted)]">
+              Ctrl + K
+            </kbd>
           )}
-        </div>
+        </button>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
         <button
           type="button"
-          onClick={onOpenFolder}
-          title="Open Folder (Ctrl/Cmd+O)"
-          aria-label="Open folder"
-          className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+          onClick={onToggleLightDark}
+          aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={isDark ? 'Switch to Light theme' : 'Switch to Dark theme'}
+          data-testid="titlebar-theme-toggle"
+          className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-input)] p-0.5 transition-colors duration-150 hover:border-[var(--border-strong)]"
         >
-          <FolderOpen className="h-3.5 w-3.5 text-[var(--accent)]" />
-          {!isNarrow && <span>Open</span>}
+          <span
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors duration-150 ${
+              !isDark ? 'bg-[var(--accent-strong)] text-white' : 'text-[var(--text-muted)]'
+            }`}
+          >
+            <Sun className="h-3 w-3" />
+          </span>
+          <span
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors duration-150 ${
+              isDark ? 'bg-[var(--accent-strong)] text-white' : 'text-[var(--text-muted)]'
+            }`}
+          >
+            <Moon className="h-3 w-3" />
+          </span>
         </button>
-
-        {hasUnsavedActiveTab && (
-          <button
-            type="button"
-            onClick={onSaveActive}
-            title="Save active file (Ctrl/Cmd+S)"
-            aria-label="Save active file"
-            className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2.5 text-xs font-semibold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)]"
-          >
-            <Save className="h-3.5 w-3.5" />
-            {!isNarrow && <span>Save</span>}
-          </button>
-        )}
-
-        {!isNarrow && (
-          <div
-            className="mr-1 flex items-center gap-0.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-0.5"
-            aria-label="Cargo build actions"
-          >
-            <button
-              type="button"
-              disabled={!hasWorkspace}
-              onClick={() => onRunAction('run')}
-              title={
-                hasWorkspace
-                  ? `${compilerBackend === 'rusturbo' ? 'Rusturbo' : 'Cargo'} Run (F5)`
-                  : 'Open a Cargo project first'
-              }
-              aria-label="Run project"
-              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-xs font-medium transition-colors ${
-                !hasWorkspace
-                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
-                  : isRunning && activeRunAction === 'run'
-                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-              }`}
-            >
-              <Play className="h-3 w-3 text-[var(--status-ok)]" />
-              <span>Run</span>
-            </button>
-            <button
-              type="button"
-              disabled={!hasWorkspace}
-              onClick={() => onRunAction('build')}
-              title={`${compilerBackend === 'rusturbo' ? 'Rusturbo' : 'Cargo'} Build (Ctrl/Cmd+Shift+B)`}
-              aria-label="Build project"
-              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
-                !hasWorkspace
-                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
-                  : isRunning && activeRunAction === 'build'
-                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Hammer className="h-3 w-3" />
-              <span>Build</span>
-            </button>
-            <button
-              type="button"
-              disabled={!hasWorkspace}
-              onClick={() => onRunAction('check')}
-              title="Cargo Check"
-              aria-label="Check project"
-              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
-                !hasWorkspace
-                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
-                  : isRunning && activeRunAction === 'check'
-                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <CheckCircle2 className="h-3 w-3" />
-              <span>Check</span>
-            </button>
-            <button
-              type="button"
-              disabled={!hasWorkspace}
-              onClick={() => onRunAction('test')}
-              title="Cargo Test"
-              aria-label="Test project"
-              className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-1.5 text-xs transition-colors ${
-                !hasWorkspace
-                  ? 'cursor-not-allowed text-[var(--text-muted)] opacity-50'
-                  : isRunning && activeRunAction === 'test'
-                    ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <FlaskConical className="h-3 w-3" />
-              <span>Test</span>
-            </button>
-            {isRunning && (
-              <button
-                type="button"
-                onClick={onStopRun}
-                title="Stop running process (Shift+F5)"
-                aria-label="Stop running process"
-                className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--status-err)]/15 px-2 text-xs font-medium text-[var(--status-err)] transition-colors hover:bg-[var(--status-err)]/25"
-              >
-                <Square className="h-3 w-3 fill-current" />
-                <span>Stop</span>
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center gap-0.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-0.5">
-          <button
-            type="button"
-            aria-label="Toggle left sidebar"
-            aria-pressed={sidebarOpen}
-            title="Toggle left sidebar (Ctrl/Cmd+B)"
-            onClick={onToggleSidebar}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
-              sidebarOpen
-                ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-            }`}
-          >
-            <PanelLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Toggle bottom panel"
-            aria-pressed={bottomPanelOpen}
-            title="Toggle bottom panel (Ctrl/Cmd+J)"
-            onClick={onToggleBottomPanel}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
-              bottomPanelOpen
-                ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-            }`}
-          >
-            <PanelBottom className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Toggle right inspector panel"
-            aria-pressed={inspectorOpen}
-            title="Toggle inspector panel (Ctrl/Cmd+Shift+I)"
-            onClick={onToggleInspector}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] transition-colors ${
-              inspectorOpen
-                ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
-                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-            }`}
-          >
-            <PanelRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <ThemeSwitcher
-          mode={themeMode}
-          compact={isNarrow}
-          onChange={onThemeChange}
-          onCycle={onThemeCycle}
-        />
 
         <button
           type="button"
-          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          aria-pressed={isFullscreen}
-          title={isFullscreen ? 'Exit fullscreen (F11)' : 'Enter fullscreen (F11)'}
-          onClick={onToggleFullscreen}
-          className={`inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] border transition-colors ${
-            isFullscreen
-              ? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent)]'
-              : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
+          onClick={onOpenSettings}
+          aria-label="Open settings"
+          title="Settings"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
-          {isFullscreen ? (
-            <Minimize2 className="h-3.5 w-3.5" />
-          ) : (
-            <Maximize2 className="h-3.5 w-3.5" />
-          )}
+          <Settings className="h-3.5 w-3.5" />
         </button>
+
+        <div className="ml-1 flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onMinimizeWindow}
+            aria-label="Minimize window"
+            title="Minimize"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onToggleMaximizeWindow}
+            aria-label="Maximize window"
+            title="Maximize / Restore"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Square className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onCloseWindow}
+            aria-label="Close window"
+            title="Close"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--status-err)]/20 hover:text-[var(--status-err)]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </header>
   );
