@@ -42,18 +42,18 @@ export function ActivityRail({
         aria-pressed={active}
         title={label}
         onClick={() => onSelectView(id)}
-        className={`relative flex w-14 flex-col items-center justify-center gap-1 rounded-xl border py-2 text-[10px] font-medium transition-all duration-150 ${
+        className={`relative flex w-[3.75rem] flex-col items-center justify-center gap-1 rounded-xl border py-2 text-[0.6875rem] font-medium transition-all duration-150 ${
           active
             ? 'border-[var(--accent-ring)] bg-[var(--accent-muted)] text-[var(--text-primary)] shadow-[0_0_16px_rgba(124,58,237,0.16)]'
             : 'border-transparent text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
         }`}
       >
-        <Icon className={`h-4 w-4 ${active ? 'text-[var(--accent)]' : ''}`} />
+        <Icon className={`h-[1.125rem] w-[1.125rem] ${active ? 'text-[var(--accent)]' : ''}`} />
         <span className="leading-none">{label}</span>
         {showGitBadge && (
           <span
             data-testid="git-rail-badge"
-            className="absolute top-1 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-strong)] px-1 text-[9px] font-semibold text-white"
+            className="absolute top-1 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-strong)] px-1 text-[0.625rem] font-semibold text-white"
           >
             {gitChangeCount}
           </span>

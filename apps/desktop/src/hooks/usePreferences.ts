@@ -43,10 +43,14 @@ export function applyZoomToDom(zoomPercent: number): void {
     return;
   }
   const clamped = Math.min(160, Math.max(70, Math.round(zoomPercent)));
-  document.documentElement.style.fontSize = `${(16 * clamped) / 100}px`;
+  document.documentElement.style.fontSize = `${(18 * clamped) / 100}px`;
   document.documentElement.style.setProperty(
     '--editor-font-size',
-    `${Number(((13 * clamped) / 100).toFixed(2))}px`,
+    `${Number(((15 * clamped) / 100).toFixed(2))}px`,
+  );
+  document.documentElement.style.setProperty(
+    '--terminal-font-size',
+    `${Number(((15 * clamped) / 100).toFixed(2))}px`,
   );
 }
 

@@ -24,6 +24,7 @@ interface BottomPanelProps {
   activeTab: BottomPanelView;
   workspaceKey: string | null;
   resolvedTheme: ResolvedTheme;
+  zoomPercent: number;
   outputLines: OutputLine[];
   diagnostics: DiagnosticItem[];
   isRunning: boolean;
@@ -53,6 +54,7 @@ export function BottomPanel({
   activeTab,
   workspaceKey,
   resolvedTheme,
+  zoomPercent,
   outputLines,
   diagnostics,
   isRunning,
@@ -344,7 +346,8 @@ export function BottomPanel({
         <div className="flex min-h-0 flex-1 flex-col bg-[var(--bg-editor)]">
           <div
             data-testid="runner-output"
-            className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] text-xs"
+            style={{ fontSize: 'var(--terminal-font-size, 15px)' }}
+            className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] leading-relaxed"
           >
             {outputLines.length === 0 ? (
               <p className="leading-relaxed text-[var(--text-secondary)]">
@@ -386,7 +389,8 @@ export function BottomPanel({
                 onChange={(e) => setStdinValue(e.target.value)}
                 placeholder="Type input for running process and press Enter..."
                 aria-label="Process stdin input"
-                className="min-w-0 flex-1 bg-transparent font-[family-name:var(--font-mono)] text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                style={{ fontSize: 'var(--terminal-font-size, 15px)' }}
+                className="min-w-0 flex-1 bg-transparent font-[family-name:var(--font-mono)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
               />
               <button
                 type="submit"
@@ -404,9 +408,10 @@ export function BottomPanel({
       {activeTab === 'problems' && (
         <div
           data-testid="problems-list"
-          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-2.5 text-xs text-[var(--text-secondary)]"
+          style={{ fontSize: 'var(--terminal-font-size, 15px)' }}
+          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-2.5 text-[var(--text-secondary)]"
         >
-          <div className="mb-1.5 flex items-center justify-between px-2 text-[11px] text-[var(--text-muted)]">
+          <div className="mb-1.5 flex items-center justify-between px-2 text-xs text-[var(--text-muted)]">
             <span>
               {errorCount} errors · {warningCount} warnings
             </span>
@@ -469,7 +474,8 @@ export function BottomPanel({
       {activeTab === 'debug-console' && (
         <div
           data-testid="debug-console"
-          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-3 font-[family-name:var(--font-mono)] text-xs text-[var(--text-secondary)]"
+          style={{ fontSize: 'var(--terminal-font-size, 15px)' }}
+          className="anar-scroll flex-1 overflow-auto bg-[var(--bg-editor)] p-3 font-[family-name:var(--font-mono)] leading-relaxed text-[var(--text-secondary)]"
         >
           <p>Debug Console ready. Start Run or Check to inspect target output.</p>
         </div>
@@ -480,6 +486,7 @@ export function BottomPanel({
         active={activeTab === 'terminal'}
         workspaceKey={workspaceKey}
         resolvedTheme={resolvedTheme}
+        zoomPercent={zoomPercent}
       />
     </section>
   );

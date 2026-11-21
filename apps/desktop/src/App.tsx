@@ -1421,14 +1421,16 @@ export function App() {
             {errorBanner && (
               <div
                 role="alert"
-                className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--status-err)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--status-err)]"
+                className="flex shrink-0 items-start justify-between gap-2 border-b border-[var(--status-err)] bg-[var(--bg-elevated)] px-3 py-2 text-xs leading-relaxed text-[var(--status-err)]"
               >
-                <span className="truncate">{errorBanner}</span>
+                <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">
+                  {errorBanner}
+                </span>
                 <button
                   type="button"
                   aria-label="Dismiss error"
                   onClick={() => setErrorBanner(null)}
-                  className="rounded p-0.5 hover:bg-[var(--bg-hover)]"
+                  className="shrink-0 rounded p-0.5 hover:bg-[var(--bg-hover)]"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1510,6 +1512,7 @@ export function App() {
               activeTab={bottomView}
               workspaceKey={workspace?.rootPath ?? null}
               resolvedTheme={resolvedTheme}
+              zoomPercent={layout.zoomPercent}
               outputLines={outputLines}
               diagnostics={diagnostics}
               isRunning={isRunning}

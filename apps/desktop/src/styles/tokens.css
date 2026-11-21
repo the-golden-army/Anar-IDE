@@ -10,9 +10,10 @@
   --radius-lg: 12px;
 
   --titlebar-height: 2.625rem;
-  --statusbar-height: 1.625rem;
-  --rail-width: 4.25rem;
-  --editor-font-size: 13px;
+  --statusbar-height: 1.75rem;
+  --rail-width: 4.5rem;
+  --editor-font-size: 15px;
+  --terminal-font-size: 15px;
 }
 
 :root,

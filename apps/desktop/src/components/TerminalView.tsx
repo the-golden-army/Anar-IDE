@@ -16,12 +16,14 @@ interface TerminalViewProps {
   active: boolean;
   workspaceKey: string | null;
   resolvedTheme: ResolvedTheme;
+  zoomPercent?: number;
 }
 
 export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView(
-  { active, workspaceKey, resolvedTheme },
+  { active, workspaceKey, resolvedTheme, zoomPercent = 100 },
   ref,
 ) {
+  const terminalFontSize = Math.max(11, Math.round((15 * zoomPercent) / 100));
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -103,7 +105,8 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
 
     const term = new XTerm({
       cursorBlink: true,
-      fontSize: 12,
+      fontSize: terminalFontSize,
+      lineHeight: 1.35,
       fontFamily:
         'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       theme:
@@ -179,6 +182,21 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
   }, [resolvedTheme]);
 
   useEffect(() => {
+    if (!termRef.current) return;
+    termRef.current.options.fontSize = terminalFontSize;
+    try {
+      fitRef.current?.fit();
+      const sid = sessionIdRef.current;
+      const term = termRef.current;
+      if (sid !== null && term.cols > 0 && term.rows > 0) {
+        void resizePty(sid, term.cols, term.rows).catch(() => {});
+      }
+    } catch {
+      // Ignore layout fit errors before container has non-zero dimensions.
+    }
+  }, [terminalFontSize]);
+
+  useEffect(() => {
     if (!active) return;
     try {
       fitRef.current?.fit();
@@ -215,7 +233,10 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(fu
       )}
 
       {!isTauri && (
-        <div className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] text-xs leading-relaxed">
+        <div
+          style={{ fontSize: 'var(--terminal-font-size, 15px)' }}
+          className="anar-scroll flex-1 overflow-auto p-3 font-[family-name:var(--font-mono)] leading-relaxed"
+        >
           <div className="flex items-center gap-1.5">
             <span className="text-[var(--status-ok)]">▸</span>
             <span className="text-amber-400">PS</span>
