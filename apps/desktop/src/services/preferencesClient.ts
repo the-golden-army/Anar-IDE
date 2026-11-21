@@ -4,6 +4,7 @@ import {
   sanitizeLayout,
   type AppPreferences,
   type LayoutState,
+  type RecentWorkspace,
   type ThemeMode,
 } from '../types/preferences';
 
@@ -12,6 +13,19 @@ export const PREFS_STORAGE_KEY = 'anar.preferences';
 
 export function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function sanitizeRecents(raw: unknown): RecentWorkspace[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (item): item is RecentWorkspace =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as RecentWorkspace).name === 'string' &&
+      typeof (item as RecentWorkspace).path === 'string',
+  );
 }
 
 export function readLocalPreferences(): AppPreferences {
@@ -32,6 +46,7 @@ export function readLocalPreferences(): AppPreferences {
       version: 1,
       theme,
       layout: sanitizeLayout(parsed.layout),
+      recentWorkspaces: sanitizeRecents(parsed.recentWorkspaces),
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -57,6 +72,7 @@ export async function fetchPreferences(): Promise<AppPreferences> {
       version: 1,
       theme: prefs.theme,
       layout: sanitizeLayout(prefs.layout),
+      recentWorkspaces: sanitizeRecents(prefs.recentWorkspaces),
     };
     writeLocalPreferences(normalized);
     return normalized;

@@ -6,6 +6,11 @@ export type SidebarTab = 'explorer' | 'search' | 'git';
 
 export type BottomTab = 'output' | 'problems' | 'terminal';
 
+export interface RecentWorkspace {
+  name: string;
+  path: string;
+}
+
 export interface LayoutState {
   sidebarOpen: boolean;
   sidebarWidth: number;
@@ -21,6 +26,7 @@ export interface AppPreferences {
   version: number;
   theme: ThemeMode;
   layout: LayoutState;
+  recentWorkspaces: RecentWorkspace[];
 }
 
 export const LAYOUT_LIMITS = {
@@ -47,6 +53,7 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   version: 1,
   theme: 'system',
   layout: DEFAULT_LAYOUT,
+  recentWorkspaces: [],
 };
 
 export function clamp(value: number, min: number, max: number): number {

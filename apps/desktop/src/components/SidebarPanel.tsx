@@ -1,27 +1,36 @@
-import { FolderOpen, GitBranch, Search, X } from 'lucide-react';
+import { GitBranch, Search, X } from 'lucide-react';
 import { useRef } from 'react';
+import { ExplorerView } from './ExplorerView';
 import { LAYOUT_LIMITS, type SidebarTab } from '../types/preferences';
+import type { FileEntry, WorkspaceInfo } from '../types/workspace';
 
 interface SidebarPanelProps {
   open: boolean;
   width: number;
   activeTab: SidebarTab;
   isCompact: boolean;
+  workspace: WorkspaceInfo | null;
+  dirCache: Record<string, FileEntry[]>;
+  expandedDirs: Set<string>;
+  activeFilePath: string | null;
+  dirtyPaths: Set<string>;
   onClose: () => void;
   onResize: (width: number) => void;
   onSelectTab: (tab: SidebarTab) => void;
+  onOpenFolder: () => void;
+  onRefreshExplorer: () => void;
+  onToggleDir: (relativePath: string) => void;
+  onSelectFile: (relativePath: string) => void;
+  onCreateFile: (relativePath: string) => Promise<void>;
+  onCreateDir: (relativePath: string) => Promise<void>;
+  onRenameEntry: (from: string, to: string) => Promise<void>;
+  onDeleteEntry: (relativePath: string) => Promise<void>;
 }
 
-const TAB_DETAILS: Record<
-  SidebarTab,
-  { title: string; badge: string; body: string; Icon: typeof FolderOpen }
+const NON_EXPLORER_TABS: Record<
+  Exclude<SidebarTab, 'explorer'>,
+  { title: string; badge: string; body: string; Icon: typeof Search }
 > = {
-  explorer: {
-    title: 'Explorer',
-    badge: 'Phase 3',
-    body: 'Open a Cargo workspace folder to browse crates, modules, and Rust source files.',
-    Icon: FolderOpen,
-  },
   search: {
     title: 'Search',
     badge: 'Phase 8',
@@ -41,9 +50,22 @@ export function SidebarPanel({
   width,
   activeTab,
   isCompact,
+  workspace,
+  dirCache,
+  expandedDirs,
+  activeFilePath,
+  dirtyPaths,
   onClose,
   onResize,
   onSelectTab,
+  onOpenFolder,
+  onRefreshExplorer,
+  onToggleDir,
+  onSelectFile,
+  onCreateFile,
+  onCreateDir,
+  onRenameEntry,
+  onDeleteEntry,
 }: SidebarPanelProps) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
@@ -52,8 +74,8 @@ export function SidebarPanel({
     return null;
   }
 
-  const info = TAB_DETAILS[activeTab];
-  const TabIcon = info.Icon;
+  const headerTitle = activeTab === 'explorer' ? 'Explorer' : NON_EXPLORER_TABS[activeTab].title;
+  const headerBadge = activeTab === 'explorer' ? null : NON_EXPLORER_TABS[activeTab].badge;
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -90,11 +112,13 @@ export function SidebarPanel({
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] px-3">
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
-            {info.title}
+            {headerTitle}
           </span>
-          <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
-            {info.badge}
-          </span>
+          {headerBadge && (
+            <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
+              {headerBadge}
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -123,13 +147,39 @@ export function SidebarPanel({
         ))}
       </div>
 
-      <div className="anar-scroll flex flex-1 flex-col items-center justify-center overflow-y-auto p-5 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--accent)]">
-          <TabIcon className="h-5 w-5" />
-        </div>
-        <p className="mt-3 text-xs font-medium text-[var(--text-primary)]">No folder opened</p>
-        <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">{info.body}</p>
-      </div>
+      {activeTab === 'explorer' ? (
+        <ExplorerView
+          workspace={workspace}
+          dirCache={dirCache}
+          expandedDirs={expandedDirs}
+          activeFilePath={activeFilePath}
+          dirtyPaths={dirtyPaths}
+          onOpenFolder={onOpenFolder}
+          onRefresh={onRefreshExplorer}
+          onToggleDir={onToggleDir}
+          onSelectFile={onSelectFile}
+          onCreateFile={onCreateFile}
+          onCreateDir={onCreateDir}
+          onRenameEntry={onRenameEntry}
+          onDeleteEntry={onDeleteEntry}
+        />
+      ) : (
+        (() => {
+          const info = NON_EXPLORER_TABS[activeTab];
+          const TabIcon = info.Icon;
+          return (
+            <div className="anar-scroll flex flex-1 flex-col items-center justify-center overflow-y-auto p-5 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--accent)]">
+                <TabIcon className="h-5 w-5" />
+              </div>
+              <p className="mt-3 text-xs font-medium text-[var(--text-primary)]">{info.title}</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
+                {info.body}
+              </p>
+            </div>
+          );
+        })()
+      )}
 
       {!isCompact && (
         <div

@@ -2,7 +2,7 @@
 
 An open-source desktop code editor built specifically for Rust, powered by **Tauri 2**, **React**, **CodeMirror 6**, **rust-analyzer**, and **Rusturbo**.
 
-> **Status:** `v0.1.0-alpha.1` — Phase 2 (App Shell & Themes).
+> **Status:** `v0.1.0` — Phase 3 (Files & Editor).
 > See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/rusturbo-integration.md`](docs/rusturbo-integration.md).
 
 ## Architecture Overview

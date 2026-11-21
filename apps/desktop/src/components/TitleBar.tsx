@@ -1,13 +1,17 @@
-import { PanelBottom, PanelLeft, PanelRight, Play } from 'lucide-react';
+import { FolderOpen, PanelBottom, PanelLeft, PanelRight, Play, Save } from 'lucide-react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import type { ThemeMode } from '../types/preferences';
 
 interface TitleBarProps {
+  workspaceName: string | null;
+  hasUnsavedActiveTab: boolean;
   themeMode: ThemeMode;
   sidebarOpen: boolean;
   bottomPanelOpen: boolean;
   inspectorOpen: boolean;
   isNarrow: boolean;
+  onOpenFolder: () => void;
+  onSaveActive: () => void;
   onThemeChange: (mode: ThemeMode) => void;
   onThemeCycle: () => void;
   onToggleSidebar: () => void;
@@ -16,11 +20,15 @@ interface TitleBarProps {
 }
 
 export function TitleBar({
+  workspaceName,
+  hasUnsavedActiveTab,
   themeMode,
   sidebarOpen,
   bottomPanelOpen,
   inspectorOpen,
   isNarrow,
+  onOpenFolder,
+  onSaveActive,
   onThemeChange,
   onThemeCycle,
   onToggleSidebar,
@@ -44,12 +52,38 @@ export function TitleBar({
             Anar
           </span>
           {!isNarrow && (
-            <span className="truncate text-xs text-[var(--text-muted)]">No project open</span>
+            <span className="truncate text-xs text-[var(--text-muted)]">
+              {workspaceName ?? 'No project open'}
+            </span>
           )}
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onOpenFolder}
+          title="Open Folder (Ctrl/Cmd+O)"
+          aria-label="Open folder"
+          className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+        >
+          <FolderOpen className="h-3.5 w-3.5 text-[var(--accent)]" />
+          {!isNarrow && <span>Open</span>}
+        </button>
+
+        {hasUnsavedActiveTab && (
+          <button
+            type="button"
+            onClick={onSaveActive}
+            title="Save active file (Ctrl/Cmd+S)"
+            aria-label="Save active file"
+            className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--accent)] px-2.5 text-xs font-semibold text-[var(--text-on-accent)] transition-colors hover:bg-[var(--accent-hover)]"
+          >
+            <Save className="h-3.5 w-3.5" />
+            {!isNarrow && <span>Save</span>}
+          </button>
+        )}
+
         {!isNarrow && (
           <button
             type="button"

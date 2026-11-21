@@ -1,5 +1,6 @@
 import { FolderOpen, Keyboard, Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
+import type { RecentWorkspace } from '../types/preferences';
 
 const ECOSYSTEM_TARGETS = [
   'axum',
@@ -15,12 +16,24 @@ const ECOSYSTEM_TARGETS = [
 ];
 
 const SHORTCUTS = [
+  { keys: 'Ctrl / Cmd + O', action: 'Open workspace folder' },
+  { keys: 'Ctrl / Cmd + S', action: 'Save active file' },
+  { keys: 'Ctrl / Cmd + W', action: 'Close active tab' },
   { keys: 'Ctrl / Cmd + B', action: 'Toggle left sidebar' },
   { keys: 'Ctrl / Cmd + J', action: 'Toggle bottom panel' },
-  { keys: 'Ctrl / Cmd + Shift + I', action: 'Toggle inspector panel' },
 ];
 
-export function WelcomeScreen() {
+interface WelcomeScreenProps {
+  recentWorkspaces: RecentWorkspace[];
+  onOpenFolder: () => void;
+  onOpenRecent: (path: string) => void;
+}
+
+export function WelcomeScreen({
+  recentWorkspaces,
+  onOpenFolder,
+  onOpenRecent,
+}: WelcomeScreenProps) {
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
@@ -43,7 +56,7 @@ export function WelcomeScreen() {
                   Anar
                 </h1>
                 <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]">
-                  v0.1.0-alpha.1
+                  v0.1.0
                 </span>
               </div>
               <p className="text-xs text-[var(--text-secondary)] sm:text-sm">
@@ -65,7 +78,7 @@ export function WelcomeScreen() {
         <section aria-label="Start actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => setNotice('Opening folders and editing Rust files arrives in Phase 3.')}
+            onClick={onOpenFolder}
             className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 text-left transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-hover)]"
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-muted)] text-[var(--accent)]">
@@ -74,7 +87,7 @@ export function WelcomeScreen() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--text-primary)]">Open Folder</p>
               <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                Open an existing Cargo crate or workspace (Phase 3).
+                Open a Cargo crate or workspace directory.
               </p>
             </div>
           </button>
@@ -103,9 +116,30 @@ export function WelcomeScreen() {
           <h2 className="text-xs font-semibold tracking-wider text-[var(--text-secondary)] uppercase">
             Recent Workspaces
           </h2>
-          <p className="mt-2 text-xs text-[var(--text-muted)]">
-            No recent projects yet. Opened Cargo workspaces will appear here starting in Phase 3.
-          </p>
+          {recentWorkspaces.length === 0 ? (
+            <p className="mt-2 text-xs text-[var(--text-muted)]">
+              No recent projects yet. Open a Cargo workspace to pin it here.
+            </p>
+          ) : (
+            <ul className="mt-2.5 space-y-1.5">
+              {recentWorkspaces.map((item) => (
+                <li key={item.path}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRecent(item.path)}
+                    className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-md)] border border-transparent px-2.5 py-1.5 text-left transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]"
+                  >
+                    <span className="truncate text-xs font-medium text-[var(--text-primary)]">
+                      {item.name}
+                    </span>
+                    <span className="truncate font-[family-name:var(--font-mono)] text-[11px] text-[var(--text-muted)]">
+                      {item.path}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
