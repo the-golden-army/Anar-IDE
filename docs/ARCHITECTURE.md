@@ -1,6 +1,6 @@
 # Anar Architecture
 
-> **Phase 1 Status:** This document defines Anar's target architecture across Phases 1–9 and records what is **verified in Phase 1** versus **planned / unverified**.
+> **Phase 2 Status:** `v0.1.0-alpha.1` implements the Phase 2 app shell, semantic design tokens, `dark`/`light`/`system` themes, responsive panel layout, and Rust-backed preferences persistence (`anar-core::preferences` + Tauri commands). Items marked as planned for Phases 3–9 remain unimplemented.
 
 ---
 
@@ -35,7 +35,7 @@ anar/
 
 | Crate | Planned Responsibilities | Key Dependencies (Planned) |
 |---|---|---|
-| `anar-core` | Project/workspace metadata types, diagnostic model (`Diagnostic`, `Span`, `Severity`), compiler backend enum (`Cargo`, `Rusturbo`), settings schema, typed error definitions. **Must never depend on `tauri`.** | `serde` |
+| `anar-core` | Project/workspace metadata types, persistent theme & layout preferences (`preferences` module), diagnostic model (`Diagnostic`, `Span`, `Severity`), compiler backend enum (`Cargo`, `Rusturbo`), typed error definitions. **Must never depend on `tauri`.** | `serde`, `serde_json` |
 | `anar-workspace` | Canonical path containment (preventing path traversal outside opened workspace), atomic file reads/writes, external file change watcher, ripgrep-style text/fuzzy search, Git status/diff queries. | `anar-core`, `notify`, `ignore` (later phases) |
 | `anar-frameworks` | `Cargo.toml` / `Cargo.lock` inspection to detect `axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, `clap`; project scaffolding templates; framework-specific run profiles (e.g., `dx serve`, `trunk serve`, server ports, health/ready hints). | `anar-core`, `toml` (later phases) |
 | `anar-runner` | Subprocess build/run/check/test/stop pipeline for both `cargo` and `rusturbo`; line-buffered stdout/stderr streaming; Cargo JSON diagnostic parser (`--message-format=json`); process-tree termination for long-running servers or infinite loops. | `anar-core`, `tokio` (later phases) |
@@ -51,6 +51,7 @@ Anar uses all three Tauri 2 IPC primitives according to data pattern:
 ### 3.1 Commands (`invoke`) — Request / Response
 
 Used for discrete user actions that return a typed `Result<T, SerializableError>`:
+- Preferences (Phase 2): `get_preferences`, `set_theme_mode`, `update_layout_state`
 - Workspace: `open_workspace`, `read_file`, `write_file`, `list_tree`, `search_files`, `git_status`
 - LSP: `lsp_completion`, `lsp_hover`, `lsp_goto_definition`, `lsp_references`, `lsp_rename`, `lsp_format`
 - Runner: `start_run`, `stop_run`, `detect_frameworks`, `list_run_profiles`

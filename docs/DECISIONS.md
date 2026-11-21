@@ -39,7 +39,20 @@ This log records key decisions made when resolving ambiguities or environment co
 
 ## ADR-006: Tracking Risks When Sandbox `GH_TOKEN` Lacks `issues=write` Permission
 
-- **Context:** Calling `gh issue create` and `POST /repos/Nour-yahyaoui/anar/issues` in this sandbox failed with `HTTP 403 Forbidden` (`Resource not accessible by integration`, `X-Accepted-Github-Permissions: issues=write`), although `gh label create` succeeded.
-- **Decision:** Record every Phase 1 risk, unknown, and unverified item in [`docs/PENDING_ISSUES.md`](PENDING_ISSUES.md) with full `gh issue create` payloads and report the missing `issues=write` permission so the user can reconnect GitHub or run the commands to open the issues on GitHub.
-- **Consequences:** Zero risks or unknowns go untracked while Phase 1 continues cleanly without blocking on token scope.
+- **Context:** Calling `gh issue create` and `POST /repos/Nour-yahyaoui/anar/issues` in Phase 1 failed with `HTTP 403 Forbidden` (`Resource not accessible by integration`, `X-Accepted-Github-Permissions: issues=write`).
+- **Decision:** Record every Phase 1 risk, unknown, and unverified item in [`docs/PENDING_ISSUES.md`](PENDING_ISSUES.md) and report the permission gap. *(Resolved at the start of Phase 2: `issues=write` was enabled and issues `#3`–`#14` were filed.)*
+- **Consequences:** All Phase 1 and Phase 2 risks and unknowns are now tracked as live GitHub issues.
+
+## ADR-007: Dual-Layer Theme & Layout Persistence (Rust Backend + Pre-Paint `localStorage`)
+
+- **Context:** Phase 2 requires theme switching (`dark`, `light`, `system`) to be both **instant** (no flash of wrong theme on startup) and **persistent** via Rust core logic.
+- **Decision:** Store canonical preferences (`ThemeMode`, `LayoutState`) in `anar-core::preferences` and persist atomically to `app_config_dir()/preferences.json` via Tauri commands (`get_preferences`, `set_theme_mode`, `update_layout_state`). Mirror the theme key in `localStorage` so an inline script in `index.html` applies `data-theme` synchronously before React mounts.
+- **Consequences:** Zero startup theme flash, single source of truth in Rust on desktop, and seamless fallback in Vitest/browser previews without Tauri IPC.
+
+## ADR-008: Prerelease SemVer Tag `v0.1.0-alpha.1` for Phase 2 (`v0.1.0` Part 1)
+
+- **Context:** The roadmap specifies `v0.1.0 (part 1)` for Phase 2 and `v0.1.0` for Phase 3, while requiring every phase to end with a git tag and GitHub Release.
+- **Decision:** Tag Phase 2 as `v0.1.0-alpha.1` (SemVer prerelease), reserving `v0.1.0` for Phase 3 completion.
+- **Consequences:** Preserves monotonic SemVer ordering across Phase 1 (`v0.0.1`), Phase 2 (`v0.1.0-alpha.1`), and Phase 3 (`v0.1.0`).
+
 
