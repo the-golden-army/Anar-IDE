@@ -1,4 +1,4 @@
-# Anar - editor
+# Anar - Rustlang Editor
 
 An open-source desktop code editor built specifically for Rust, powered by **Tauri 2**, **React**, **CodeMirror 6**, **rust-analyzer**, and **Rusturbo**.
 
