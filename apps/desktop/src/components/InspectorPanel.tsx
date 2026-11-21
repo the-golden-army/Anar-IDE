@@ -1,5 +1,6 @@
-import { Cpu, Layers, RotateCw, Sparkles, Zap, X } from 'lucide-react';
+import { Cpu, Layers, Play, RotateCw, Sparkles, Zap, X } from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { WorkspaceFrameworkReport } from '../types/frameworks';
 import type { LspStatusEvent } from '../types/lsp';
 import { LAYOUT_LIMITS } from '../types/preferences';
 
@@ -8,10 +9,15 @@ interface InspectorPanelProps {
   width: number;
   isCompact: boolean;
   lspStatus: LspStatusEvent;
+  frameworkReport: WorkspaceFrameworkReport | null;
+  selectedProfileId: string | null;
+  isRunning: boolean;
   hasWorkspace: boolean;
   canFormat: boolean;
   onRestartLsp: () => void;
   onFormatDocument: () => void;
+  onSelectProfile: (profileId: string) => void;
+  onRunProfile: (profileId: string) => void;
   onClose: () => void;
   onResize: (width: number) => void;
 }
@@ -21,10 +27,15 @@ export function InspectorPanel({
   width,
   isCompact,
   lspStatus,
+  frameworkReport,
+  selectedProfileId,
+  isRunning,
   hasWorkspace,
   canFormat,
   onRestartLsp,
   onFormatDocument,
+  onSelectProfile,
+  onRunProfile,
   onClose,
   onResize,
 }: InspectorPanelProps) {
@@ -162,12 +173,116 @@ export function InspectorPanel({
           <p className="mt-1 text-[var(--text-secondary)]">Cargo default · Rusturbo (Phase 7)</p>
         </div>
 
-        <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
+        <div
+          className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3"
+          data-testid="inspector-framework-section"
+        >
           <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
             <Layers className="h-3.5 w-3.5 text-[var(--accent)]" />
             <span>Framework Profile</span>
           </div>
-          <p className="mt-1 text-[var(--text-secondary)]">Auto-detection arrives in Phase 6.</p>
+
+          {!hasWorkspace && (
+            <p className="mt-1 text-[var(--text-secondary)]">
+              Open a Cargo project to inspect frameworks and run profiles.
+            </p>
+          )}
+
+          {hasWorkspace && frameworkReport && (
+            <div className="mt-2 space-y-2.5">
+              {frameworkReport.detected.length === 0 ? (
+                <p className="text-[var(--text-secondary)]">
+                  Standard Cargo crate (no web/GUI/CLI framework detected).
+                </p>
+              ) : (
+                <ul className="space-y-1.5" aria-label="Detected frameworks">
+                  {frameworkReport.detected.map((fw) => (
+                    <li
+                      key={`${fw.crateName}-${fw.sourceManifest}`}
+                      className="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-2 py-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-[var(--text-primary)]">
+                          {fw.displayName}
+                        </span>
+                        <span className="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">
+                          {fw.resolvedVersion ?? fw.versionSpec ?? fw.category}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate font-[family-name:var(--font-mono)] text-[10px] text-[var(--text-muted)]">
+                        {fw.sourceManifest}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {frameworkReport.profiles.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-semibold tracking-wider text-[var(--text-muted)] uppercase">
+                    Run Profiles
+                  </span>
+                  <div className="space-y-1">
+                    {frameworkReport.profiles.map((profile) => {
+                      const active = profile.id === selectedProfileId;
+                      return (
+                        <div
+                          key={profile.id}
+                          className={`rounded-[var(--radius-sm)] border p-2 ${
+                            active
+                              ? 'border-[var(--accent)] bg-[var(--accent-muted)]'
+                              : 'border-[var(--border-subtle)] bg-[var(--bg-panel)]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onSelectProfile(profile.id)}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <span className="block truncate font-medium text-[var(--text-primary)]">
+                                {profile.label}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isRunning || !profile.toolAvailable}
+                              onClick={() => onRunProfile(profile.id)}
+                              aria-label={`Run profile ${profile.label}`}
+                              title={
+                                profile.toolAvailable
+                                  ? `Run ${profile.program} ${profile.args.join(' ')}`
+                                  : `Install ${profile.requiredTool ?? profile.program} to run`
+                              }
+                              className="inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              <Play className="h-2.5 w-2.5 text-[var(--accent)]" />
+                              <span>Run</span>
+                            </button>
+                          </div>
+                          <p className="mt-1 truncate font-[family-name:var(--font-mono)] text-[10px] text-[var(--text-muted)]">
+                            {profile.program} {profile.args.join(' ')}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                            {profile.defaultPort !== null && (
+                              <span className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[var(--text-secondary)]">
+                                :{profile.defaultPort}
+                              </span>
+                            )}
+                            {!profile.toolAvailable && profile.requiredTool && (
+                              <span className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 text-[var(--status-warn)]">
+                                missing {profile.requiredTool}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </aside>

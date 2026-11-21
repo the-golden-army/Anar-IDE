@@ -2,6 +2,11 @@ use anar_core::preferences::{
     load_preferences, save_preferences, AppPreferences, LayoutState, ThemeMode,
 };
 use anar_core::CompilerBackend;
+use anar_frameworks::{
+    detect_workspace_frameworks as detect_frameworks_in_dir,
+    list_project_templates as builtin_project_templates, resolve_profile_by_id, scaffold_project,
+    ProjectTemplateId, ProjectTemplateSummary, WorkspaceFrameworkReport,
+};
 use anar_lsp::{
     LspCompletionItem, LspHoverInfo, LspLocation, LspManager, LspStatusEvent, LspTextEdit,
 };
@@ -485,6 +490,89 @@ async fn lsp_format_document(
         .map_err(|err| format!("LSP format task failed: {err}"))?
 }
 
+#[tauri::command]
+fn detect_workspace_frameworks(
+    ws_state: tauri::State<'_, WorkspaceState>,
+) -> Result<WorkspaceFrameworkReport, String> {
+    let scope = ws_state.scope()?;
+    detect_frameworks_in_dir(scope.root())
+}
+
+#[tauri::command]
+fn list_project_templates() -> Vec<ProjectTemplateSummary> {
+    builtin_project_templates()
+}
+
+#[tauri::command]
+async fn pick_parent_folder(app: AppHandle) -> Result<Option<String>, String> {
+    let app_for_dialog = app.clone();
+    let dialog_handle = tauri::async_runtime::spawn_blocking(move || {
+        app_for_dialog
+            .dialog()
+            .file()
+            .set_title("Choose Parent Directory for New Project")
+            .blocking_pick_folder()
+    });
+    let picked = dialog_handle
+        .await
+        .map_err(|err| format!("folder dialog task failed: {err}"))?;
+
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path
+        .into_path()
+        .map_err(|err| format!("selected folder is not a local filesystem path: {err}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+fn create_project_from_template(
+    parent_dir: String,
+    project_name: String,
+    template: ProjectTemplateId,
+    app: AppHandle,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    prefs_state: tauri::State<'_, PreferencesState>,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<WorkspaceInfo, String> {
+    let root = scaffold_project(Path::new(&parent_dir), &project_name, template)?;
+    let emitter = Some(app.clone());
+    let info = open_workspace_with_optional_emitter(&root, emitter, &ws_state, &prefs_state)?;
+    start_lsp_for_workspace(&app, &info, &lsp_state);
+    Ok(info)
+}
+
+#[tauri::command]
+fn start_profile_run(
+    profile_id: String,
+    on_event: tauri::ipc::Channel<RunnerEvent>,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    runner_state: tauri::State<'_, RunnerState>,
+) -> Result<u64, String> {
+    let scope = ws_state.scope()?;
+    let profile = resolve_profile_by_id(scope.root(), &profile_id)?;
+    let working_dir = if let Some(sub) = &profile.working_subdir {
+        match scope.resolve_existing(Path::new(sub)) {
+            Ok(path) => path,
+            Err(err) => return Err(err.to_string()),
+        }
+    } else {
+        scope.root().to_path_buf()
+    };
+    let arg_refs: Vec<&str> = profile.args.iter().map(String::as_str).collect();
+    runner_state.0.spawn_command(
+        &working_dir,
+        RunnerAction::Run,
+        &profile.program,
+        &arg_refs,
+        profile.parse_cargo_json,
+        move |evt| {
+            let _ = on_event.send(evt);
+        },
+    )
+}
+
 /// Entry point for the Anar desktop application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -529,7 +617,12 @@ pub fn run() {
             lsp_completion,
             lsp_hover,
             lsp_goto_definition,
-            lsp_format_document
+            lsp_format_document,
+            detect_workspace_frameworks,
+            list_project_templates,
+            pick_parent_folder,
+            create_project_from_template,
+            start_profile_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anar");

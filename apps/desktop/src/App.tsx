@@ -7,6 +7,7 @@ import {
   type CodeMirrorEditorHandle,
 } from './components/editor/CodeMirrorEditor';
 import { InspectorPanel } from './components/InspectorPanel';
+import { NewProjectModal } from './components/NewProjectModal';
 import { SidebarPanel } from './components/SidebarPanel';
 import { StatusBar } from './components/StatusBar';
 import { TabBar } from './components/TabBar';
@@ -14,6 +15,7 @@ import { TitleBar } from './components/TitleBar';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { useCompactViewport } from './hooks/useCompactViewport';
 import { usePreferences } from './hooks/usePreferences';
+import { detectWorkspaceFrameworks, startProfileRun } from './services/frameworksClient';
 import {
   getLspStatus,
   lspDidChange,
@@ -39,6 +41,7 @@ import {
 } from './services/workspaceClient';
 import { sendRunStdin, startCargoRun, stopCargoRun } from './services/runnerClient';
 import { getFullscreenState, toggleFullscreen } from './services/windowClient';
+import type { WorkspaceFrameworkReport } from './types/frameworks';
 import type { LspLocation, LspStatusEvent } from './types/lsp';
 import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
 import type { DiagnosticItem, OutputLine, RunnerAction, RunnerEvent } from './types/runner';
@@ -82,6 +85,9 @@ export function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [activeRunAction, setActiveRunAction] = useState<RunnerAction | null>(null);
   const [lastExitSummary, setLastExitSummary] = useState<string | null>(null);
+  const [frameworkReport, setFrameworkReport] = useState<WorkspaceFrameworkReport | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const initialContentsRef = useRef<Map<string, string>>(new Map());
@@ -116,45 +122,68 @@ export function App() {
     setDirCache((prev) => ({ ...prev, [relDir]: entries }));
   }, []);
 
-  const hydrateWorkspace = useCallback(async (info: WorkspaceInfo) => {
-    void stopCargoRun().catch(() => {});
-    for (const timer of lspChangeTimersRef.current.values()) {
-      window.clearTimeout(timer);
+  const refreshFrameworks = useCallback(async () => {
+    try {
+      const report = await detectWorkspaceFrameworks();
+      setFrameworkReport(report);
+      setSelectedProfileId((prev) => {
+        if (prev && report?.profiles.some((p) => p.id === prev)) {
+          return prev;
+        }
+        return report?.defaultProfileId ?? report?.profiles[0]?.id ?? null;
+      });
+    } catch {
+      setFrameworkReport(null);
+      setSelectedProfileId(null);
     }
-    lspChangeTimersRef.current.clear();
-    setWorkspace(info);
-    setErrorBanner(null);
-    setTabs([]);
-    setActiveTabPath(null);
-    setOutputLines([]);
-    setCargoDiagnostics([]);
-    setLspDiagnosticsByFile({});
-    setIsRunning(false);
-    setActiveRunAction(null);
-    setLastExitSummary(null);
-    activeRunIdRef.current = null;
-    initialContentsRef.current.clear();
-
-    const nextCache: Record<string, FileEntry[]> = { '': info.entries };
-    const nextExpanded = new Set<string>();
-
-    // Auto-expand `src/` if present so Rust projects open directly to `src/main.rs` / `lib.rs`.
-    const srcDir = info.entries.find((e) => e.isDir && e.name === 'src');
-    if (srcDir) {
-      try {
-        nextCache[srcDir.relativePath] = await listWorkspaceDir(srcDir.relativePath);
-        nextExpanded.add(srcDir.relativePath);
-      } catch {
-        // Ignore if unreadable.
-      }
-    }
-
-    setDirCache(nextCache);
-    setExpandedDirs(nextExpanded);
-
-    const updatedPrefs = await fetchPreferences();
-    setRecentWorkspaces(updatedPrefs.recentWorkspaces);
   }, []);
+
+  const hydrateWorkspace = useCallback(
+    async (info: WorkspaceInfo) => {
+      void stopCargoRun().catch(() => {});
+      for (const timer of lspChangeTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      lspChangeTimersRef.current.clear();
+      setWorkspace(info);
+      setErrorBanner(null);
+      setTabs([]);
+      setActiveTabPath(null);
+      setOutputLines([]);
+      setCargoDiagnostics([]);
+      setLspDiagnosticsByFile({});
+      setIsRunning(false);
+      setActiveRunAction(null);
+      setLastExitSummary(null);
+      setFrameworkReport(null);
+      setSelectedProfileId(null);
+      activeRunIdRef.current = null;
+      initialContentsRef.current.clear();
+
+      const nextCache: Record<string, FileEntry[]> = { '': info.entries };
+      const nextExpanded = new Set<string>();
+
+      // Auto-expand `src/` if present so Rust projects open directly to `src/main.rs` / `lib.rs`.
+      const srcDir = info.entries.find((e) => e.isDir && e.name === 'src');
+      if (srcDir) {
+        try {
+          nextCache[srcDir.relativePath] = await listWorkspaceDir(srcDir.relativePath);
+          nextExpanded.add(srcDir.relativePath);
+        } catch {
+          // Ignore if unreadable.
+        }
+      }
+
+      setDirCache(nextCache);
+      setExpandedDirs(nextExpanded);
+
+      void refreshFrameworks();
+
+      const updatedPrefs = await fetchPreferences();
+      setRecentWorkspaces(updatedPrefs.recentWorkspaces);
+    },
+    [refreshFrameworks],
+  );
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -257,6 +286,9 @@ export function App() {
         if (targetPath.toLowerCase().endsWith('.rs')) {
           void lspDidSave(targetPath).catch(() => {});
         }
+        if (targetPath.endsWith('Cargo.toml') || targetPath.endsWith('Cargo.lock')) {
+          void refreshFrameworks();
+        }
         setTabs((prev) =>
           prev.map((t) =>
             t.relativePath === targetPath
@@ -276,7 +308,7 @@ export function App() {
         setErrorBanner(formatError(err));
       }
     },
-    [showTransientStatus],
+    [refreshFrameworks, showTransientStatus],
   );
 
   const handleReloadFromDisk = useCallback(
@@ -419,6 +451,15 @@ export function App() {
         void refreshDirectory(dir).catch(() => {});
       }
 
+      if (
+        events.some(
+          (evt) =>
+            evt.relativePath.endsWith('Cargo.toml') || evt.relativePath.endsWith('Cargo.lock'),
+        )
+      ) {
+        void refreshFrameworks();
+      }
+
       for (const evt of events) {
         const openTab = tabsRef.current.find((t) => t.relativePath === evt.relativePath);
         if (!openTab) continue;
@@ -456,7 +497,7 @@ export function App() {
       disposed = true;
       if (unlisten) unlisten();
     };
-  }, [handleReloadFromDisk, refreshDirectory]);
+  }, [handleReloadFromDisk, refreshDirectory, refreshFrameworks]);
 
   const handleDirtyChange = useCallback((relPath: string, dirty: boolean) => {
     setTabs((prev) =>
@@ -577,6 +618,68 @@ export function App() {
             setLastExitSummary(summary);
             appendOutput('system', summary);
             showTransientStatus(`cargo ${event.action}: ${summary}`);
+          }
+        });
+        activeRunIdRef.current = runId;
+      } catch (err) {
+        setIsRunning(false);
+        setActiveRunAction(null);
+        setErrorBanner(formatError(err));
+      }
+    },
+    [appendOutput, handleSaveTab, showTransientStatus, updateLayout],
+  );
+
+  const handleRunProfile = useCallback(
+    async (profileId: string) => {
+      if (!workspaceRef.current) {
+        setErrorBanner('Open a Cargo workspace before running.');
+        return;
+      }
+
+      const dirtyTabs = tabsRef.current.filter((t) => t.dirty);
+      for (const dirtyTab of dirtyTabs) {
+        await handleSaveTab(dirtyTab.relativePath);
+      }
+
+      setErrorBanner(null);
+      setOutputLines([]);
+      setCargoDiagnostics([]);
+      setLastExitSummary(null);
+      setIsRunning(true);
+      setActiveRunAction('run');
+      setSelectedProfileId(profileId);
+      updateLayout((prev) => ({
+        ...prev,
+        bottomPanelOpen: true,
+        activeBottomTab: 'output',
+      }));
+
+      try {
+        const runId = await startProfileRun(profileId, (event: RunnerEvent) => {
+          if (activeRunIdRef.current !== null && event.runId !== activeRunIdRef.current) {
+            return;
+          }
+          if (event.type === 'started') {
+            activeRunIdRef.current = event.runId;
+            appendOutput('system', `$ ${event.command}`);
+          } else if (event.type === 'output') {
+            appendOutput(event.stream, event.line);
+          } else if (event.type === 'diagnostic') {
+            setCargoDiagnostics((prev) => [...prev, event.diagnostic]);
+            const rendered = event.diagnostic.rendered?.trimEnd();
+            if (rendered) {
+              appendOutput('stderr', rendered);
+            }
+          } else if (event.type === 'finished') {
+            setIsRunning(false);
+            const seconds = (event.durationMs / 1000).toFixed(2);
+            const summary = event.cancelled
+              ? `Cancelled after ${seconds}s`
+              : `Exited (${event.exitCode ?? '?'}) in ${seconds}s`;
+            setLastExitSummary(summary);
+            appendOutput('system', summary);
+            showTransientStatus(`${profileId}: ${summary}`);
           }
         });
         activeRunIdRef.current = runId;
@@ -1064,6 +1167,7 @@ export function App() {
               <WelcomeScreen
                 recentWorkspaces={recentWorkspaces}
                 onOpenFolder={() => void handleOpenFolder()}
+                onNewProject={() => setNewProjectModalOpen(true)}
                 onOpenRecent={(path) => void handleOpenRecent(path)}
               />
             )}
@@ -1098,6 +1202,9 @@ export function App() {
           width={layout.inspectorWidth}
           isCompact={isCompact}
           lspStatus={lspStatus}
+          frameworkReport={frameworkReport}
+          selectedProfileId={selectedProfileId}
+          isRunning={isRunning}
           hasWorkspace={workspace !== null}
           canFormat={
             lspReady &&
@@ -1107,6 +1214,8 @@ export function App() {
           }
           onRestartLsp={() => void handleRestartLsp()}
           onFormatDocument={() => void handleFormatDocument()}
+          onSelectProfile={(profileId) => setSelectedProfileId(profileId)}
+          onRunProfile={(profileId) => void handleRunProfile(profileId)}
           onClose={() => updateLayout((prev) => ({ ...prev, inspectorOpen: false }))}
           onResize={(inspectorWidth) => updateLayout((prev) => ({ ...prev, inspectorWidth }))}
         />
@@ -1117,6 +1226,7 @@ export function App() {
         statusMessage={statusMessage}
         isRunning={isRunning}
         lspStatus={lspStatus}
+        detectedFrameworks={frameworkReport?.detected ?? []}
         errorCount={errorCount}
         warningCount={warningCount}
         themeMode={preferences.theme}
@@ -1130,6 +1240,12 @@ export function App() {
         onZoomOut={() => adjustZoom(-LAYOUT_LIMITS.zoomStep)}
         onZoomReset={resetZoom}
         onZoomIn={() => adjustZoom(LAYOUT_LIMITS.zoomStep)}
+      />
+
+      <NewProjectModal
+        open={newProjectModalOpen}
+        onClose={() => setNewProjectModalOpen(false)}
+        onCreated={hydrateWorkspace}
       />
     </div>
   );

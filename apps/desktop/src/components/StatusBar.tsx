@@ -1,5 +1,6 @@
 import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { languageLabelFor } from './editor/codemirrorTheme';
+import type { DetectedFramework } from '../types/frameworks';
 import type { LspStatusEvent } from '../types/lsp';
 import type { ResolvedTheme, ThemeMode } from '../types/preferences';
 import type { EditorTab } from '../types/workspace';
@@ -9,6 +10,7 @@ interface StatusBarProps {
   statusMessage: string | null;
   isRunning: boolean;
   lspStatus: LspStatusEvent;
+  detectedFrameworks: DetectedFramework[];
   errorCount: number;
   warningCount: number;
   themeMode: ThemeMode;
@@ -27,6 +29,7 @@ export function StatusBar({
   statusMessage,
   isRunning,
   lspStatus,
+  detectedFrameworks,
   errorCount,
   warningCount,
   themeMode,
@@ -63,6 +66,15 @@ export function StatusBar({
           />
           <span>Cargo</span>
         </span>
+
+        {!isNarrow && detectedFrameworks.length > 0 && (
+          <span
+            data-testid="statusbar-frameworks"
+            className="truncate rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]"
+          >
+            {detectedFrameworks.map((f) => f.displayName).join(' · ')}
+          </span>
+        )}
 
         <button
           type="button"
