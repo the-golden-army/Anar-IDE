@@ -132,7 +132,7 @@ impl AppPreferences {
         self.version = PREFERENCES_SCHEMA_VERSION;
         self.layout = self.layout.sanitized();
         let cap = self.recent_workspaces.len().min(MAX_RECENT_WORKSPACES);
-        let mut deduped = Vec::with_capacity(cap);
+        let mut deduped: Vec<RecentWorkspace> = Vec::with_capacity(cap);
         for entry in self.recent_workspaces {
             if entry.path.trim().is_empty() {
                 continue;
