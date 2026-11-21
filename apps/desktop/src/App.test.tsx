@@ -4,6 +4,7 @@ import { App } from './App';
 import { PREFS_STORAGE_KEY, THEME_STORAGE_KEY } from './services/preferencesClient';
 import type { LspDiagnosticsEvent, LspStatusEvent } from './types/lsp';
 import { DEFAULT_PREFERENCES } from './types/preferences';
+import type { PtyEvent } from './types/pty';
 import type { RunnerAction, RunnerEvent } from './types/runner';
 import type { WorkspaceFsEvent } from './types/workspace';
 
@@ -11,6 +12,41 @@ const invokeMock = vi.fn();
 const fsListeners = new Set<(event: { payload: WorkspaceFsEvent[] }) => void>();
 const lspStatusListeners = new Set<(event: { payload: LspStatusEvent }) => void>();
 const lspDiagnosticsListeners = new Set<(event: { payload: LspDiagnosticsEvent }) => void>();
+const xtermWrites: string[] = [];
+let xtermDataCallback: ((data: string) => void) | null = null;
+
+vi.mock('@xterm/xterm', () => {
+  class MockTerminal {
+    cols = 80;
+    rows = 24;
+    options: Record<string, unknown> = {};
+    loadAddon() {}
+    open() {}
+    write(data: Uint8Array | string) {
+      if (typeof data === 'string') {
+        xtermWrites.push(data);
+      } else {
+        xtermWrites.push(new TextDecoder().decode(data));
+      }
+    }
+    writeln(line: string) {
+      xtermWrites.push(line);
+    }
+    onData(cb: (data: string) => void) {
+      xtermDataCallback = cb;
+      return { dispose: () => {} };
+    }
+    dispose() {}
+  }
+  return { Terminal: MockTerminal };
+});
+
+vi.mock('@xterm/addon-fit', () => {
+  class MockFitAddon {
+    fit() {}
+  }
+  return { FitAddon: MockFitAddon };
+});
 
 vi.mock('@tauri-apps/api/core', () => {
   class MockChannel<T = unknown> {
@@ -122,7 +158,10 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   let prefs = { ...DEFAULT_PREFERENCES };
   let fullscreen = false;
   let activeChannel: { onmessage: ((msg: RunnerEvent) => void) | null } | null = null;
+  let activePtyChannel: { onmessage: ((msg: PtyEvent) => void) | null } | null = null;
+  let stagedDemo = false;
   const stdinInputs: string[] = [];
+  const ptyInputs: string[] = [];
   const lspOpenedPaths: string[] = [];
 
   const listDir = (relDir: string) => {
@@ -456,6 +495,108 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
         });
         return 2;
       }
+      case 'search_workspace': {
+        const query = (payload?.query as string) ?? '';
+        return {
+          query,
+          files: [
+            {
+              relativePath: 'src/lib.rs',
+              matches: [
+                {
+                  line: 1,
+                  col: 8,
+                  lineText: 'pub fn greet() {}',
+                  matchStart: 7,
+                  matchEnd: 12,
+                },
+              ],
+            },
+          ],
+          totalMatches: 1,
+          truncated: false,
+        };
+      }
+      case 'git_status':
+        return {
+          gitAvailable: true,
+          isGitRepo: true,
+          branch: 'main',
+          ahead: 1,
+          behind: 0,
+          entries: [
+            {
+              relativePath: 'src/main.rs',
+              indexStatus: stagedDemo ? 'M' : ' ',
+              worktreeStatus: stagedDemo ? ' ' : 'M',
+              staged: stagedDemo,
+              untracked: false,
+            },
+          ],
+          error: null,
+        };
+      case 'git_diff':
+        return {
+          relativePath: (payload?.relPath as string) ?? 'src/main.rs',
+          staged: Boolean(payload?.staged),
+          diff: '@@ -1,2 +1,2 @@\n-println!("old");\n+println!("hello anar");',
+        };
+      case 'git_stage_file':
+        stagedDemo = true;
+        return {
+          gitAvailable: true,
+          isGitRepo: true,
+          branch: 'main',
+          ahead: 1,
+          behind: 0,
+          entries: [
+            {
+              relativePath: 'src/main.rs',
+              indexStatus: 'M',
+              worktreeStatus: ' ',
+              staged: true,
+              untracked: false,
+            },
+          ],
+          error: null,
+        };
+      case 'git_unstage_file':
+        stagedDemo = false;
+        return {
+          gitAvailable: true,
+          isGitRepo: true,
+          branch: 'main',
+          ahead: 1,
+          behind: 0,
+          entries: [
+            {
+              relativePath: 'src/main.rs',
+              indexStatus: ' ',
+              worktreeStatus: 'M',
+              staged: false,
+              untracked: false,
+            },
+          ],
+          error: null,
+        };
+      case 'pty_spawn': {
+        activePtyChannel = payload?.onEvent as { onmessage: ((msg: PtyEvent) => void) | null };
+        queueMicrotask(() => {
+          activePtyChannel?.onmessage?.({
+            type: 'data',
+            sessionId: 7,
+            data: Array.from(new TextEncoder().encode('$ ')),
+          });
+        });
+        return 7;
+      }
+      case 'pty_write':
+        ptyInputs.push((payload?.data as string) ?? '');
+        return null;
+      case 'pty_resize':
+        return null;
+      case 'pty_kill':
+        return true;
       default:
         return prefs;
     }
@@ -464,6 +605,7 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   return {
     files,
     stdinInputs,
+    ptyInputs,
     lspOpenedPaths,
     emitRunnerEvent: (event: RunnerEvent) => activeChannel?.onmessage?.(event),
     emitLspStatus: (event: LspStatusEvent) => {
@@ -491,6 +633,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     fsListeners.clear();
     lspStatusListeners.clear();
     lspDiagnosticsListeners.clear();
+    xtermWrites.length = 0;
+    xtermDataCallback = null;
     setViewportWidth(1280);
     mockMatchMedia(false);
   });
@@ -580,7 +724,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     expect(screen.getByText(/No compiler errors or warnings/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Source Control' }));
-    expect(screen.getByText(/Git branch status/i)).toBeInTheDocument();
+    expect(screen.getByText(/Open a Git repository folder/i)).toBeInTheDocument();
   });
 
   it('adapts controls cleanly for narrow window sizes', () => {
@@ -1092,6 +1236,66 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       expect(screen.getByTestId('runner-output')).toHaveTextContent(
         '$ rusturbo --manifest-dir /tmp/demo build',
       );
+    });
+  });
+
+  it('searches workspace text, displays git status/diff & staging, and runs PTY terminal', async () => {
+    const { ptyInputs } = setupMockRustWorkspace();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('file-tree')).toBeInTheDocument();
+    });
+
+    // Search across workspace and click match to jump to src/lib.rs.
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    const searchInput = screen.getByLabelText('Search workspace');
+    fireEvent.change(searchInput, { target: { value: 'greet' } });
+    fireEvent.submit(searchInput.closest('form')!);
+
+    const hitBtn = await screen.findByRole('button', { name: /pub fn greet/i });
+    fireEvent.click(hitBtn);
+    await waitFor(() => {
+      expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
+        'data-active-path',
+        'src/lib.rs',
+      );
+    });
+
+    // Inspect Git branch, diff, and stage/unstage controls.
+    fireEvent.click(screen.getByRole('button', { name: 'Source Control' }));
+    const gitView = screen.getByTestId('git-view');
+    await waitFor(() => {
+      expect(gitView).toHaveTextContent('main');
+      expect(gitView).toHaveTextContent('src/main.rs');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'src/main.rs' }));
+    const diffViewer = await screen.findByTestId('git-diff-viewer');
+    expect(diffViewer).toHaveTextContent('hello anar');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stage src/main.rs' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('git_stage_file', { relPath: 'src/main.rs' });
+      expect(gitView).toHaveTextContent('Staged Changes');
+    });
+
+    // Open integrated Terminal tab, verify PTY spawn + output + input forwarding.
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'pty_spawn',
+        expect.objectContaining({ cols: expect.any(Number), rows: expect.any(Number) }),
+      );
+      expect(screen.getByTestId('terminal-view')).toHaveTextContent('Shell session #7');
+    });
+
+    act(() => {
+      xtermDataCallback?.('cargo --version\r');
+    });
+    await waitFor(() => {
+      expect(ptyInputs).toContain('cargo --version\r');
     });
   });
 });
