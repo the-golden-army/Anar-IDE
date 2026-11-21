@@ -112,7 +112,10 @@ pub fn save_document(scope: &WorkspaceScope, rel_path: &Path, content: &str) -> 
         fs::create_dir_all(parent)?;
     }
 
-    let file_name = resolved.file_name().and_then(|s| s.to_str()).unwrap_or("file");
+    let file_name = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("file");
     let tmp_name = format!(".{file_name}.anar-tmp-{}", std::process::id());
     let tmp_path = resolved.with_file_name(tmp_name);
 
@@ -148,7 +151,10 @@ pub fn create_file(scope: &WorkspaceScope, rel_path: &Path) -> Result<String> {
     if let Some(parent) = resolved.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::OpenOptions::new().write(true).create_new(true).open(&resolved)?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&resolved)?;
     let relative = scope
         .to_relative_string(&resolved)
         .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());

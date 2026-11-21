@@ -376,7 +376,8 @@ mod tests {
         let base = unique_temp_dir("ws");
         let proj = base.join("sample-crate");
         std::fs::create_dir_all(proj.join("src")).unwrap();
-        std::fs::write(proj.join("Cargo.toml"), "[package]\nname = \"sample\"\n").unwrap();
+        let cargo_toml = "[package]\nname = \"sample\"\n";
+        std::fs::write(proj.join("Cargo.toml"), cargo_toml).unwrap();
         std::fs::write(proj.join("src/main.rs"), "fn main() {}\n").unwrap();
 
         let prefs_state = PreferencesState::load(base.join(PREFERENCES_FILE_NAME));

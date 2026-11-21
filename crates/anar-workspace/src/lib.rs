@@ -77,7 +77,8 @@ mod tests {
         fs::create_dir_all(dir.join(".git")).unwrap();
         let cargo_toml = "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n";
         fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
-        fs::write(dir.join("src/main.rs"), "fn main() {\n    println!(\"hi\");\n}\n").unwrap();
+        let main_rs = "fn main() {\n    println!(\"hi\");\n}\n";
+        fs::write(dir.join("src/main.rs"), main_rs).unwrap();
         fs::write(dir.join("target/debug/junk"), "ignored").unwrap();
         dir
     }
@@ -189,7 +190,8 @@ mod tests {
         let next_toml = "[package]\nname = \"demo\"\nversion = \"0.1.1\"\n";
         save_document(&scope, Path::new("Cargo.toml"), next_toml).unwrap();
 
-        fs::write(dir.join("src/main.rs"), "fn main() { println!(\"external\"); }\n").unwrap();
+        let ext_rs = "fn main() { println!(\"external\"); }\n";
+        fs::write(dir.join("src/main.rs"), ext_rs).unwrap();
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         let mut saw_external = false;

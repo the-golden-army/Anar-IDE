@@ -22,9 +22,7 @@ impl WorkspaceScope {
             let msg = format!("workspace path '{}' is not a directory", canonical.display());
             return Err(WorkspaceError::NotDirectory(msg));
         }
-        Ok(Self {
-            root: canonical,
-        })
+        Ok(Self { root: canonical })
     }
 
     /// Returns the canonical workspace root path.
@@ -61,7 +59,8 @@ impl WorkspaceScope {
     /// Resolves a path for creating or overwriting a file/directory inside the workspace.
     pub fn resolve_for_write(&self, rel_or_abs: &Path) -> Result<PathBuf> {
         if rel_or_abs.as_os_str().is_empty() {
-            return Err(WorkspaceError::PathEscape("cannot write to empty path".to_string()));
+            let msg = "cannot write to empty path".to_string();
+            return Err(WorkspaceError::PathEscape(msg));
         }
 
         let candidate = self.normalize_candidate(rel_or_abs)?;
