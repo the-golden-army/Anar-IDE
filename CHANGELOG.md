@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `anar-runner` streaming Cargo execution (`build`, `run`, `check`, `test`), `--message-format=json` diagnostic parser, interactive `stdin` forwarding, and cross-platform process-tree termination (`process_group` + `kill` on Unix, `taskkill /T /F` on Windows).
 - Tauri runner commands (`start_cargo_run`, `stop_cargo_run`, `send_run_stdin`) streaming ordered `RunnerEvent`s over `tauri::ipc::Channel`.
 - TitleBar `Run` / `Build` / `Check` / `Test` / `Stop` controls (`F5`, `Shift+F5`, `Ctrl/Cmd+Shift+B`), live streaming **Output** console with interactive `stdin` input, and clickable **Problems** diagnostics that jump directly to the file, line, and column in CodeMirror.
+- `anar-lsp` `rust-analyzer` lifecycle manager, `Content-Length` JSON-RPC 2.0 transport, `file://` URI <-> workspace-relative path conversions, document synchronization (`didOpen`, debounced `didChange`, `didSave`, `didClose` with 1 MiB large-file guard), crash detection + bounded auto-restart with open-document replay, and `lsp://status` / `lsp://diagnostics` event emissions.
+- CodeMirror 6 language intelligence (`@codemirror/lint` inline diagnostic squiggles & gutter markers, `@codemirror/autocomplete` completions, `hoverTooltip` type/doc popups, `F12` / `Ctrl/Cmd+Click` Go-to-Definition, `Shift+Alt+F` `rustfmt` formatting) plus live `rust-analyzer` status & restart controls in `StatusBar` and `InspectorPanel`.
 
 ## [0.1.0] - 2026-11-21
 

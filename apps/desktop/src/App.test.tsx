@@ -2,12 +2,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { PREFS_STORAGE_KEY, THEME_STORAGE_KEY } from './services/preferencesClient';
+import type { LspDiagnosticsEvent, LspStatusEvent } from './types/lsp';
 import { DEFAULT_PREFERENCES } from './types/preferences';
 import type { RunnerAction, RunnerEvent } from './types/runner';
 import type { WorkspaceFsEvent } from './types/workspace';
 
 const invokeMock = vi.fn();
 const fsListeners = new Set<(event: { payload: WorkspaceFsEvent[] }) => void>();
+const lspStatusListeners = new Set<(event: { payload: LspStatusEvent }) => void>();
+const lspDiagnosticsListeners = new Set<(event: { payload: LspDiagnosticsEvent }) => void>();
 
 vi.mock('@tauri-apps/api/core', () => {
   class MockChannel<T = unknown> {
@@ -23,17 +26,30 @@ vi.mock('@tauri-apps/api/core', () => {
 });
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(
-    async (eventName: string, handler: (event: { payload: WorkspaceFsEvent[] }) => void) => {
-      if (eventName === 'workspace://fs-changed') {
-        fsListeners.add(handler);
-        return () => {
-          fsListeners.delete(handler);
-        };
-      }
-      return () => {};
-    },
-  ),
+  listen: vi.fn(async (eventName: string, handler: (event: { payload: unknown }) => void) => {
+    if (eventName === 'workspace://fs-changed') {
+      const typed = handler as (event: { payload: WorkspaceFsEvent[] }) => void;
+      fsListeners.add(typed);
+      return () => {
+        fsListeners.delete(typed);
+      };
+    }
+    if (eventName === 'lsp://status') {
+      const typed = handler as (event: { payload: LspStatusEvent }) => void;
+      lspStatusListeners.add(typed);
+      return () => {
+        lspStatusListeners.delete(typed);
+      };
+    }
+    if (eventName === 'lsp://diagnostics') {
+      const typed = handler as (event: { payload: LspDiagnosticsEvent }) => void;
+      lspDiagnosticsListeners.add(typed);
+      return () => {
+        lspDiagnosticsListeners.delete(typed);
+      };
+    }
+    return () => {};
+  }),
 }));
 
 function setViewportWidth(width: number) {
@@ -97,6 +113,7 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   const files: Record<string, string> = {
     'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\n',
     'src/main.rs': 'fn main() {\n    println!("hello anar");\n}\n',
+    'src/lib.rs': 'pub fn greet() {}\n',
   };
   if (largeContent !== null) {
     files['src/huge.rs'] = largeContent;
@@ -106,6 +123,7 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   let fullscreen = false;
   let activeChannel: { onmessage: ((msg: RunnerEvent) => void) | null } | null = null;
   const stdinInputs: string[] = [];
+  const lspOpenedPaths: string[] = [];
 
   const listDir = (relDir: string) => {
     if (relDir === '') {
@@ -257,6 +275,45 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
           durationMs: 50,
         });
         return true;
+      case 'lsp_get_status':
+        return { status: 'ready', detail: null };
+      case 'lsp_restart':
+        for (const cb of lspStatusListeners) {
+          cb({ payload: { status: 'ready', detail: null } });
+        }
+        return null;
+      case 'lsp_did_open':
+        lspOpenedPaths.push((payload?.relPath as string) ?? '');
+        return null;
+      case 'lsp_did_change':
+      case 'lsp_did_save':
+      case 'lsp_did_close':
+        return null;
+      case 'lsp_completion':
+        return [
+          {
+            label: 'println!',
+            detail: 'macro_rules! println',
+            documentation: null,
+            kind: 15,
+            insertText: null,
+            sortText: null,
+          },
+        ];
+      case 'lsp_hover':
+        return { contents: 'fn main()', range: null };
+      case 'lsp_goto_definition':
+        return [{ relativePath: 'src/lib.rs', line: 1, col: 8 }];
+      case 'lsp_format_document':
+        return [
+          {
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 3, character: 0 },
+            },
+            newText: 'fn main() {\n    println!("formatted anar");\n}\n',
+          },
+        ];
       default:
         return prefs;
     }
@@ -265,7 +322,18 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
   return {
     files,
     stdinInputs,
+    lspOpenedPaths,
     emitRunnerEvent: (event: RunnerEvent) => activeChannel?.onmessage?.(event),
+    emitLspStatus: (event: LspStatusEvent) => {
+      for (const cb of lspStatusListeners) {
+        cb({ payload: event });
+      }
+    },
+    emitLspDiagnostics: (event: LspDiagnosticsEvent) => {
+      for (const cb of lspDiagnosticsListeners) {
+        cb({ payload: event });
+      }
+    },
   };
 }
 
@@ -279,6 +347,8 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     invokeMock.mockReset();
     fsListeners.clear();
+    lspStatusListeners.clear();
+    lspDiagnosticsListeners.clear();
     setViewportWidth(1280);
     mockMatchMedia(false);
   });
@@ -696,6 +766,81 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
         'data-active-path',
         'src/main.rs',
+      );
+    });
+  });
+
+  it('syncs rust-analyzer status, live LSP diagnostics, go-to-definition, and formatting', async () => {
+    const { lspOpenedPaths, emitLspStatus, emitLspDiagnostics } = setupMockRustWorkspace();
+    render(<App />);
+
+    // Open workspace and open src/main.rs.
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'main.rs' }));
+    await waitFor(() => {
+      expect(lspOpenedPaths).toContain('src/main.rs');
+      expect(screen.getByTestId('lsp-status-label')).toHaveTextContent('rust-analyzer: ready');
+    });
+
+    // Emit indexing -> ready status updates and live diagnostics from rust-analyzer.
+    act(() => {
+      emitLspStatus({ status: 'indexing', detail: 'loading metadata' });
+    });
+    expect(screen.getByTestId('lsp-status-label')).toHaveTextContent(
+      'rust-analyzer: indexing (loading metadata)',
+    );
+
+    act(() => {
+      emitLspStatus({ status: 'ready', detail: null });
+      emitLspDiagnostics({
+        relativePath: 'src/main.rs',
+        diagnostics: [
+          {
+            severity: 'warning',
+            code: 'unused_variables',
+            message: 'unused variable: `draft`',
+            rendered: null,
+            primarySpan: {
+              fileName: 'src/main.rs',
+              lineStart: 2,
+              lineEnd: 2,
+              columnStart: 5,
+              columnEnd: 10,
+              isPrimary: true,
+              label: null,
+            },
+            spans: [],
+          },
+        ],
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open problems panel' }));
+    expect(await screen.findByText(/unused variable: `draft`/i)).toBeInTheDocument();
+
+    // Trigger Format Rust File from the Inspector panel.
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle right inspector panel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Format Rust File' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('lsp_format_document', { relPath: 'src/main.rs' });
+    });
+
+    // Trigger F12 go-to-definition inside CodeMirror and verify cross-file jump to src/lib.rs.
+    const cmContent = screen.getByTestId('codemirror-editor').querySelector('.cm-content')!;
+    fireEvent.keyDown(cmContent, { key: 'F12' });
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('lsp_goto_definition', {
+        relPath: 'src/main.rs',
+        line: expect.any(Number),
+        col: expect.any(Number),
+      });
+      expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
+        'data-active-path',
+        'src/lib.rs',
       );
     });
   });

@@ -1,5 +1,6 @@
 import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { languageLabelFor } from './editor/codemirrorTheme';
+import type { LspStatusEvent } from '../types/lsp';
 import type { ResolvedTheme, ThemeMode } from '../types/preferences';
 import type { EditorTab } from '../types/workspace';
 
@@ -7,6 +8,7 @@ interface StatusBarProps {
   activeTab: EditorTab | null;
   statusMessage: string | null;
   isRunning: boolean;
+  lspStatus: LspStatusEvent;
   errorCount: number;
   warningCount: number;
   themeMode: ThemeMode;
@@ -24,6 +26,7 @@ export function StatusBar({
   activeTab,
   statusMessage,
   isRunning,
+  lspStatus,
   errorCount,
   warningCount,
   themeMode,
@@ -38,6 +41,12 @@ export function StatusBar({
 }: StatusBarProps) {
   const themeLabel =
     themeMode === 'system' ? `System (${resolvedTheme})` : themeMode === 'dark' ? 'Dark' : 'Light';
+  const lspLabel =
+    lspStatus.status === 'stopped'
+      ? 'rust-analyzer: idle'
+      : lspStatus.detail
+        ? `rust-analyzer: ${lspStatus.status} (${lspStatus.detail})`
+        : `rust-analyzer: ${lspStatus.status}`;
 
   return (
     <footer
@@ -84,7 +93,19 @@ export function StatusBar({
           <span className="truncate text-[var(--accent)]">{statusMessage}</span>
         )}
         {!isNarrow && !statusMessage && (
-          <span className="truncate text-[var(--text-muted)]">rust-analyzer: idle</span>
+          <span
+            data-testid="lsp-status-label"
+            title={lspStatus.detail ?? lspLabel}
+            className={`truncate ${
+              lspStatus.status === 'ready'
+                ? 'text-[var(--status-ok)]'
+                : lspStatus.status === 'crashed' || lspStatus.status === 'unavailable'
+                  ? 'text-[var(--status-warn)]'
+                  : 'text-[var(--text-muted)]'
+            }`}
+          >
+            {lspLabel}
+          </span>
         )}
       </div>
 

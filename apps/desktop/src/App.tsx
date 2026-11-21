@@ -14,7 +14,17 @@ import { TitleBar } from './components/TitleBar';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { useCompactViewport } from './hooks/useCompactViewport';
 import { usePreferences } from './hooks/usePreferences';
-import { fetchPreferences } from './services/preferencesClient';
+import {
+  getLspStatus,
+  lspDidChange,
+  lspDidClose,
+  lspDidOpen,
+  lspDidSave,
+  onLspDiagnostics,
+  onLspStatus,
+  restartLsp,
+} from './services/lspClient';
+import { fetchPreferences, isTauriRuntime } from './services/preferencesClient';
 import {
   createWorkspaceDir,
   createWorkspaceFile,
@@ -29,6 +39,7 @@ import {
 } from './services/workspaceClient';
 import { sendRunStdin, startCargoRun, stopCargoRun } from './services/runnerClient';
 import { getFullscreenState, toggleFullscreen } from './services/windowClient';
+import type { LspLocation, LspStatusEvent } from './types/lsp';
 import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
 import type { DiagnosticItem, OutputLine, RunnerAction, RunnerEvent } from './types/runner';
 import type { EditorTab, FileEntry, WorkspaceFsEvent, WorkspaceInfo } from './types/workspace';
@@ -60,7 +71,14 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
-  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [cargoDiagnostics, setCargoDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [lspDiagnosticsByFile, setLspDiagnosticsByFile] = useState<
+    Record<string, DiagnosticItem[]>
+  >({});
+  const [lspStatus, setLspStatus] = useState<LspStatusEvent>({
+    status: 'stopped',
+    detail: null,
+  });
   const [isRunning, setIsRunning] = useState(false);
   const [activeRunAction, setActiveRunAction] = useState<RunnerAction | null>(null);
   const [lastExitSummary, setLastExitSummary] = useState<string | null>(null);
@@ -73,6 +91,7 @@ export function App() {
   const outputIdRef = useRef(0);
   const activeRunIdRef = useRef<number | null>(null);
   const pendingRevealRef = useRef<{ path: string; line: number; col: number } | null>(null);
+  const lspChangeTimersRef = useRef<Map<string, number>>(new Map());
 
   tabsRef.current = tabs;
   expandedDirsRef.current = expandedDirs;
@@ -99,12 +118,17 @@ export function App() {
 
   const hydrateWorkspace = useCallback(async (info: WorkspaceInfo) => {
     void stopCargoRun().catch(() => {});
+    for (const timer of lspChangeTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    lspChangeTimersRef.current.clear();
     setWorkspace(info);
     setErrorBanner(null);
     setTabs([]);
     setActiveTabPath(null);
     setOutputLines([]);
-    setDiagnostics([]);
+    setCargoDiagnostics([]);
+    setLspDiagnosticsByFile({});
     setIsRunning(false);
     setActiveRunAction(null);
     setLastExitSummary(null);
@@ -213,6 +237,9 @@ export function App() {
       };
       setTabs((prev) => [...prev, newTab]);
       setActiveTabPath(doc.relativePath);
+      if (!doc.isLargeFile && doc.relativePath.toLowerCase().endsWith('.rs')) {
+        void lspDidOpen(doc.relativePath, 'rust', doc.content).catch(() => {});
+      }
     } catch (err) {
       setErrorBanner(formatError(err));
     }
@@ -227,6 +254,9 @@ export function App() {
       try {
         const result = await saveWorkspaceFile(targetPath, content);
         editorRef.current?.markSaved(targetPath);
+        if (targetPath.toLowerCase().endsWith('.rs')) {
+          void lspDidSave(targetPath).catch(() => {});
+        }
         setTabs((prev) =>
           prev.map((t) =>
             t.relativePath === targetPath
@@ -281,6 +311,14 @@ export function App() {
 
   const handleCloseTab = useCallback(
     (relPath: string) => {
+      const pendingTimer = lspChangeTimersRef.current.get(relPath);
+      if (pendingTimer !== undefined) {
+        window.clearTimeout(pendingTimer);
+        lspChangeTimersRef.current.delete(relPath);
+      }
+      if (relPath.toLowerCase().endsWith('.rs')) {
+        void lspDidClose(relPath).catch(() => {});
+      }
       editorRef.current?.dropTabBuffer(relPath);
       initialContentsRef.current.delete(relPath);
       setTabs((prev) => {
@@ -504,7 +542,7 @@ export function App() {
 
       setErrorBanner(null);
       setOutputLines([]);
-      setDiagnostics([]);
+      setCargoDiagnostics([]);
       setLastExitSummary(null);
       setIsRunning(true);
       setActiveRunAction(action);
@@ -525,7 +563,7 @@ export function App() {
           } else if (event.type === 'output') {
             appendOutput(event.stream, event.line);
           } else if (event.type === 'diagnostic') {
-            setDiagnostics((prev) => [...prev, event.diagnostic]);
+            setCargoDiagnostics((prev) => [...prev, event.diagnostic]);
             const rendered = event.diagnostic.rendered?.trimEnd();
             if (rendered) {
               appendOutput('stderr', rendered);
@@ -571,26 +609,121 @@ export function App() {
     [appendOutput],
   );
 
+  const handleNavigateLocation = useCallback(
+    async (loc: LspLocation) => {
+      pendingRevealRef.current = {
+        path: loc.relativePath,
+        line: loc.line,
+        col: loc.col,
+      };
+      if (activeTabPath === loc.relativePath) {
+        editorRef.current?.revealLocation(loc.line, loc.col);
+        pendingRevealRef.current = null;
+        return;
+      }
+      await handleOpenFile(loc.relativePath);
+    },
+    [activeTabPath, handleOpenFile],
+  );
+
   const handleSelectDiagnostic = useCallback(
     async (diag: DiagnosticItem) => {
       const span = diag.primarySpan;
       if (!span) {
         return;
       }
-      pendingRevealRef.current = {
-        path: span.fileName,
+      await handleNavigateLocation({
+        relativePath: span.fileName,
         line: span.lineStart,
         col: span.columnStart,
-      };
-      if (activeTabPath === span.fileName) {
-        editorRef.current?.revealLocation(span.lineStart, span.columnStart);
-        pendingRevealRef.current = null;
-        return;
-      }
-      await handleOpenFile(span.fileName);
+      });
     },
-    [activeTabPath, handleOpenFile],
+    [handleNavigateLocation],
   );
+
+  const handleDocumentChange = useCallback((relPath: string, content: string) => {
+    if (!relPath.toLowerCase().endsWith('.rs')) {
+      return;
+    }
+    const prevTimer = lspChangeTimersRef.current.get(relPath);
+    if (prevTimer !== undefined) {
+      window.clearTimeout(prevTimer);
+    }
+    const timer = window.setTimeout(() => {
+      lspChangeTimersRef.current.delete(relPath);
+      void lspDidChange(relPath, content).catch(() => {});
+    }, 200);
+    lspChangeTimersRef.current.set(relPath, timer);
+  }, []);
+
+  const handleRestartLsp = useCallback(async () => {
+    try {
+      await restartLsp();
+      showTransientStatus('Restarting rust-analyzer...');
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, [showTransientStatus]);
+
+  const handleFormatDocument = useCallback(async () => {
+    const formatted = await editorRef.current?.formatActiveDocument();
+    if (formatted) {
+      showTransientStatus('Formatted Rust document');
+    }
+  }, [showTransientStatus]);
+
+  useEffect(() => {
+    const timers = lspChangeTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) {
+        window.clearTimeout(timer);
+      }
+      timers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlistenStatus: (() => void) | null = null;
+    let unlistenDiags: (() => void) | null = null;
+
+    if (isTauriRuntime()) {
+      void getLspStatus()
+        .then((status) => {
+          if (!disposed) {
+            setLspStatus(status);
+          }
+        })
+        .catch(() => {});
+    }
+
+    onLspStatus((event) => {
+      if (!disposed) {
+        setLspStatus(event);
+      }
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenStatus = fn;
+    });
+
+    onLspDiagnostics((event) => {
+      if (!disposed) {
+        setLspDiagnosticsByFile((prev) => ({
+          ...prev,
+          [event.relativePath]: event.diagnostics,
+        }));
+      }
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenDiags = fn;
+    });
+
+    return () => {
+      disposed = true;
+      if (unlistenStatus) unlistenStatus();
+      if (unlistenDiags) unlistenDiags();
+    };
+  }, []);
 
   useEffect(() => {
     const pending = pendingRevealRef.current;
@@ -731,6 +864,37 @@ export function App() {
     () => tabs.find((t) => t.relativePath === activeTabPath) ?? null,
     [activeTabPath, tabs],
   );
+
+  const lspReady = lspStatus.status === 'ready' || lspStatus.status === 'indexing';
+
+  const diagnostics = useMemo(() => {
+    const merged: DiagnosticItem[] = [];
+    const seen = new Set<string>();
+    const pushUnique = (item: DiagnosticItem) => {
+      const span = item.primarySpan;
+      const key = span
+        ? `${span.fileName}:${span.lineStart}:${span.columnStart}:${item.message}`
+        : `msg:${item.message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    };
+    for (const item of Object.values(lspDiagnosticsByFile).flat()) {
+      pushUnique(item);
+    }
+    for (const item of cargoDiagnostics) {
+      pushUnique(item);
+    }
+    return merged;
+  }, [cargoDiagnostics, lspDiagnosticsByFile]);
+
+  const activeFileDiagnostics = useMemo(() => {
+    if (!activeTabPath) {
+      return [];
+    }
+    return diagnostics.filter((d) => d.primarySpan?.fileName === activeTabPath);
+  }, [activeTabPath, diagnostics]);
 
   const errorCount = useMemo(
     () => diagnostics.filter((d) => d.severity === 'error').length,
@@ -888,9 +1052,13 @@ export function App() {
                 initialContent={activeInitialContent}
                 isLargeFile={activeTab.isLargeFile}
                 resolvedTheme={resolvedTheme}
+                lspReady={lspReady}
+                activeDiagnostics={activeFileDiagnostics}
                 onDirtyChange={handleDirtyChange}
                 onCursorChange={handleCursorChange}
+                onDocumentChange={handleDocumentChange}
                 onSaveRequested={() => void handleSaveTab(activeTab.relativePath)}
+                onNavigateLocation={(loc) => void handleNavigateLocation(loc)}
               />
             ) : (
               <WelcomeScreen
@@ -929,6 +1097,16 @@ export function App() {
           open={layout.inspectorOpen}
           width={layout.inspectorWidth}
           isCompact={isCompact}
+          lspStatus={lspStatus}
+          hasWorkspace={workspace !== null}
+          canFormat={
+            lspReady &&
+            Boolean(activeTab) &&
+            !activeTab?.isLargeFile &&
+            Boolean(activeTab?.relativePath.toLowerCase().endsWith('.rs'))
+          }
+          onRestartLsp={() => void handleRestartLsp()}
+          onFormatDocument={() => void handleFormatDocument()}
           onClose={() => updateLayout((prev) => ({ ...prev, inspectorOpen: false }))}
           onResize={(inspectorWidth) => updateLayout((prev) => ({ ...prev, inspectorWidth }))}
         />
@@ -938,6 +1116,7 @@ export function App() {
         activeTab={activeTab}
         statusMessage={statusMessage}
         isRunning={isRunning}
+        lspStatus={lspStatus}
         errorCount={errorCount}
         warningCount={warningCount}
         themeMode={preferences.theme}
