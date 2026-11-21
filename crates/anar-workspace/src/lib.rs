@@ -75,7 +75,8 @@ mod tests {
         fs::create_dir_all(dir.join("src")).unwrap();
         fs::create_dir_all(dir.join("target/debug")).unwrap();
         fs::create_dir_all(dir.join(".git")).unwrap();
-        fs::write(dir.join("Cargo.toml"), "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n").unwrap();
+        let cargo_toml = "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n";
+        fs::write(dir.join("Cargo.toml"), cargo_toml).unwrap();
         fs::write(dir.join("src/main.rs"), "fn main() {\n    println!(\"hi\");\n}\n").unwrap();
         fs::write(dir.join("target/debug/junk"), "ignored").unwrap();
         dir
@@ -154,8 +155,8 @@ mod tests {
         let created = create_file(&scope, Path::new("src/lib.rs")).unwrap();
         assert_eq!(created, "src/lib.rs");
 
-        let renamed =
-            rename_entry(&scope, Path::new("src/lib.rs"), Path::new("src/mod.rs")).unwrap();
+        let rename_res = rename_entry(&scope, Path::new("src/lib.rs"), Path::new("src/mod.rs"));
+        let renamed = rename_res.unwrap();
         assert_eq!(renamed, "src/mod.rs");
 
         delete_entry(&scope, Path::new("src/mod.rs")).unwrap();
@@ -175,12 +176,12 @@ mod tests {
         let events: Arc<Mutex<Vec<WorkspaceFsEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let events_sink = Arc::clone(&events);
 
-        let watcher = WorkspaceWatcher::start(scope.clone(), move |batch| {
+        let watcher_res = WorkspaceWatcher::start(scope.clone(), move |batch| {
             if let Ok(mut guard) = events_sink.lock() {
                 guard.extend(batch);
             }
-        })
-        .unwrap();
+        });
+        let watcher = watcher_res.unwrap();
 
         // Give OS watcher a moment to arm, then trigger self-save and external edit.
         std::thread::sleep(Duration::from_millis(250));
