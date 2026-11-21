@@ -27,8 +27,10 @@ import {
   renameWorkspaceEntry,
   saveWorkspaceFile,
 } from './services/workspaceClient';
+import { sendRunStdin, startCargoRun, stopCargoRun } from './services/runnerClient';
 import { getFullscreenState, toggleFullscreen } from './services/windowClient';
 import { LAYOUT_LIMITS, type BottomTab, type SidebarTab } from './types/preferences';
+import type { DiagnosticItem, OutputLine, RunnerAction, RunnerEvent } from './types/runner';
 import type { EditorTab, FileEntry, WorkspaceFsEvent, WorkspaceInfo } from './types/workspace';
 
 function formatError(err: unknown): string {
@@ -57,12 +59,20 @@ export function App() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [activeRunAction, setActiveRunAction] = useState<RunnerAction | null>(null);
+  const [lastExitSummary, setLastExitSummary] = useState<string | null>(null);
 
   const editorRef = useRef<CodeMirrorEditorHandle | null>(null);
   const initialContentsRef = useRef<Map<string, string>>(new Map());
   const tabsRef = useRef<EditorTab[]>(tabs);
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
   const workspaceRef = useRef<WorkspaceInfo | null>(workspace);
+  const outputIdRef = useRef(0);
+  const activeRunIdRef = useRef<number | null>(null);
+  const pendingRevealRef = useRef<{ path: string; line: number; col: number } | null>(null);
 
   tabsRef.current = tabs;
   expandedDirsRef.current = expandedDirs;
@@ -88,10 +98,17 @@ export function App() {
   }, []);
 
   const hydrateWorkspace = useCallback(async (info: WorkspaceInfo) => {
+    void stopCargoRun().catch(() => {});
     setWorkspace(info);
     setErrorBanner(null);
     setTabs([]);
     setActiveTabPath(null);
+    setOutputLines([]);
+    setDiagnostics([]);
+    setIsRunning(false);
+    setActiveRunAction(null);
+    setLastExitSummary(null);
+    activeRunIdRef.current = null;
     initialContentsRef.current.clear();
 
     const nextCache: Record<string, FileEntry[]> = { '': info.entries };
@@ -463,6 +480,128 @@ export function App() {
     showTransientStatus(`Zoom ${LAYOUT_LIMITS.defaultZoomPercent}%`);
   }, [showTransientStatus, updateLayout]);
 
+  const appendOutput = useCallback((stream: OutputLine['stream'], text: string) => {
+    outputIdRef.current += 1;
+    const id = outputIdRef.current;
+    setOutputLines((prev) => {
+      const next = [...prev, { id, stream, text }];
+      return next.length > 2000 ? next.slice(next.length - 2000) : next;
+    });
+  }, []);
+
+  const handleRunAction = useCallback(
+    async (action: RunnerAction) => {
+      if (!workspaceRef.current) {
+        setErrorBanner('Open a Cargo workspace before running.');
+        return;
+      }
+
+      // Save all dirty tabs before invoking Cargo so edits are included immediately.
+      const dirtyTabs = tabsRef.current.filter((t) => t.dirty);
+      for (const dirtyTab of dirtyTabs) {
+        await handleSaveTab(dirtyTab.relativePath);
+      }
+
+      setErrorBanner(null);
+      setOutputLines([]);
+      setDiagnostics([]);
+      setLastExitSummary(null);
+      setIsRunning(true);
+      setActiveRunAction(action);
+      updateLayout((prev) => ({
+        ...prev,
+        bottomPanelOpen: true,
+        activeBottomTab: 'output',
+      }));
+
+      try {
+        const runId = await startCargoRun(action, (event: RunnerEvent) => {
+          if (activeRunIdRef.current !== null && event.runId !== activeRunIdRef.current) {
+            return;
+          }
+          if (event.type === 'started') {
+            activeRunIdRef.current = event.runId;
+            appendOutput('system', `$ ${event.command}`);
+          } else if (event.type === 'output') {
+            appendOutput(event.stream, event.line);
+          } else if (event.type === 'diagnostic') {
+            setDiagnostics((prev) => [...prev, event.diagnostic]);
+            const rendered = event.diagnostic.rendered?.trimEnd();
+            if (rendered) {
+              appendOutput('stderr', rendered);
+            }
+          } else if (event.type === 'finished') {
+            setIsRunning(false);
+            const seconds = (event.durationMs / 1000).toFixed(2);
+            const summary = event.cancelled
+              ? `Cancelled after ${seconds}s`
+              : `Exited (${event.exitCode ?? '?'}) in ${seconds}s`;
+            setLastExitSummary(summary);
+            appendOutput('system', summary);
+            showTransientStatus(`cargo ${event.action}: ${summary}`);
+          }
+        });
+        activeRunIdRef.current = runId;
+      } catch (err) {
+        setIsRunning(false);
+        setActiveRunAction(null);
+        setErrorBanner(formatError(err));
+      }
+    },
+    [appendOutput, handleSaveTab, showTransientStatus, updateLayout],
+  );
+
+  const handleStopRun = useCallback(async () => {
+    try {
+      await stopCargoRun();
+    } catch (err) {
+      setErrorBanner(formatError(err));
+    }
+  }, []);
+
+  const handleSendStdin = useCallback(
+    async (input: string) => {
+      try {
+        await sendRunStdin(input);
+        appendOutput('system', `> ${input}`);
+      } catch (err) {
+        setErrorBanner(formatError(err));
+      }
+    },
+    [appendOutput],
+  );
+
+  const handleSelectDiagnostic = useCallback(
+    async (diag: DiagnosticItem) => {
+      const span = diag.primarySpan;
+      if (!span) {
+        return;
+      }
+      pendingRevealRef.current = {
+        path: span.fileName,
+        line: span.lineStart,
+        col: span.columnStart,
+      };
+      if (activeTabPath === span.fileName) {
+        editorRef.current?.revealLocation(span.lineStart, span.columnStart);
+        pendingRevealRef.current = null;
+        return;
+      }
+      await handleOpenFile(span.fileName);
+    },
+    [activeTabPath, handleOpenFile],
+  );
+
+  useEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (pending && activeTabPath === pending.path) {
+      pendingRevealRef.current = null;
+      window.requestAnimationFrame(() => {
+        editorRef.current?.revealLocation(pending.line, pending.col);
+      });
+    }
+  }, [activeTabPath]);
+
   const handleToggleFullscreen = useCallback(async () => {
     try {
       const next = await toggleFullscreen();
@@ -496,6 +635,15 @@ export function App() {
       if (event.key === 'F11' && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         void handleToggleFullscreen();
+        return;
+      }
+      if (event.key === 'F5' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void handleStopRun();
+        } else {
+          void handleRunAction('run');
+        }
         return;
       }
 
@@ -549,6 +697,9 @@ export function App() {
           event.preventDefault();
           handleCloseTab(activeTabPath);
         }
+      } else if (key === 'b' && event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        void handleRunAction('build');
       } else if (key === 'b' && !event.shiftKey && !event.altKey) {
         event.preventDefault();
         updateLayout((prev) => ({ ...prev, sidebarOpen: !prev.sidebarOpen }));
@@ -568,7 +719,9 @@ export function App() {
     adjustZoom,
     handleCloseTab,
     handleOpenFolder,
+    handleRunAction,
     handleSaveTab,
+    handleStopRun,
     handleToggleFullscreen,
     resetZoom,
     updateLayout,
@@ -577,6 +730,16 @@ export function App() {
   const activeTab = useMemo(
     () => tabs.find((t) => t.relativePath === activeTabPath) ?? null,
     [activeTabPath, tabs],
+  );
+
+  const errorCount = useMemo(
+    () => diagnostics.filter((d) => d.severity === 'error').length,
+    [diagnostics],
+  );
+
+  const warningCount = useMemo(
+    () => diagnostics.filter((d) => d.severity === 'warning').length,
+    [diagnostics],
   );
 
   const dirtyPaths = useMemo(
@@ -596,6 +759,8 @@ export function App() {
       <TitleBar
         workspaceName={workspace?.name ?? null}
         hasUnsavedActiveTab={Boolean(activeTab?.dirty)}
+        isRunning={isRunning}
+        activeRunAction={activeRunAction}
         themeMode={preferences.theme}
         sidebarOpen={layout.sidebarOpen}
         bottomPanelOpen={layout.bottomPanelOpen}
@@ -604,6 +769,8 @@ export function App() {
         isNarrow={isNarrow}
         onOpenFolder={() => void handleOpenFolder()}
         onSaveActive={() => void handleSaveTab(activeTabPath)}
+        onRunAction={(action) => void handleRunAction(action)}
+        onStopRun={() => void handleStopRun()}
         onThemeChange={setThemeMode}
         onThemeCycle={cycleThemeMode}
         onToggleSidebar={toggleSidebar}
@@ -738,11 +905,23 @@ export function App() {
             open={layout.bottomPanelOpen}
             height={layout.bottomPanelHeight}
             activeTab={layout.activeBottomTab}
+            outputLines={outputLines}
+            diagnostics={diagnostics}
+            isRunning={isRunning}
+            activeRunAction={activeRunAction}
+            lastExitSummary={lastExitSummary}
             onClose={() => updateLayout((prev) => ({ ...prev, bottomPanelOpen: false }))}
             onResize={(bottomPanelHeight) =>
               updateLayout((prev) => ({ ...prev, bottomPanelHeight }))
             }
             onSelectTab={handleBottomTabSelect}
+            onClearOutput={() => {
+              setOutputLines([]);
+              setLastExitSummary(null);
+            }}
+            onStopRun={() => void handleStopRun()}
+            onSendStdin={(input) => void handleSendStdin(input)}
+            onSelectDiagnostic={(diag) => void handleSelectDiagnostic(diag)}
           />
         </main>
 
@@ -758,10 +937,16 @@ export function App() {
       <StatusBar
         activeTab={activeTab}
         statusMessage={statusMessage}
+        isRunning={isRunning}
+        errorCount={errorCount}
+        warningCount={warningCount}
         themeMode={preferences.theme}
         resolvedTheme={resolvedTheme}
         zoomPercent={layout.zoomPercent}
         isNarrow={isNarrow}
+        onOpenProblems={() =>
+          updateLayout((prev) => ({ ...prev, bottomPanelOpen: true, activeBottomTab: 'problems' }))
+        }
         onCycleTheme={cycleThemeMode}
         onZoomOut={() => adjustZoom(-LAYOUT_LIMITS.zoomStep)}
         onZoomReset={resetZoom}

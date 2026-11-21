@@ -5,6 +5,15 @@ All notable changes to **Anar** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `anar-core` shared diagnostic types (`DiagnosticItem`, `DiagnosticSpan`, `DiagnosticSeverity`).
+- `anar-runner` streaming Cargo execution (`build`, `run`, `check`, `test`), `--message-format=json` diagnostic parser, interactive `stdin` forwarding, and cross-platform process-tree termination (`process_group` + `kill` on Unix, `taskkill /T /F` on Windows).
+- Tauri runner commands (`start_cargo_run`, `stop_cargo_run`, `send_run_stdin`) streaming ordered `RunnerEvent`s over `tauri::ipc::Channel`.
+- TitleBar `Run` / `Build` / `Check` / `Test` / `Stop` controls (`F5`, `Shift+F5`, `Ctrl/Cmd+Shift+B`), live streaming **Output** console with interactive `stdin` input, and clickable **Problems** diagnostics that jump directly to the file, line, and column in CodeMirror.
+
 ## [0.1.0] - 2026-11-21
 
 ### Added

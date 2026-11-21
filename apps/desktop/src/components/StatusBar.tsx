@@ -1,3 +1,4 @@
+import { AlertCircle, AlertTriangle } from 'lucide-react';
 import { languageLabelFor } from './editor/codemirrorTheme';
 import type { ResolvedTheme, ThemeMode } from '../types/preferences';
 import type { EditorTab } from '../types/workspace';
@@ -5,10 +6,14 @@ import type { EditorTab } from '../types/workspace';
 interface StatusBarProps {
   activeTab: EditorTab | null;
   statusMessage: string | null;
+  isRunning: boolean;
+  errorCount: number;
+  warningCount: number;
   themeMode: ThemeMode;
   resolvedTheme: ResolvedTheme;
   zoomPercent: number;
   isNarrow: boolean;
+  onOpenProblems: () => void;
   onCycleTheme: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
@@ -18,10 +23,14 @@ interface StatusBarProps {
 export function StatusBar({
   activeTab,
   statusMessage,
+  isRunning,
+  errorCount,
+  warningCount,
   themeMode,
   resolvedTheme,
   zoomPercent,
   isNarrow,
+  onOpenProblems,
   onCycleTheme,
   onZoomOut,
   onZoomReset,
@@ -37,9 +46,40 @@ export function StatusBar({
     >
       <div className="flex min-w-0 items-center gap-3">
         <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-[var(--text-primary)]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[var(--status-ok)]" aria-hidden="true" />
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              isRunning ? 'animate-pulse bg-[var(--accent)]' : 'bg-[var(--status-ok)]'
+            }`}
+            aria-hidden="true"
+          />
           <span>Cargo</span>
         </span>
+
+        <button
+          type="button"
+          onClick={onOpenProblems}
+          aria-label="Open problems panel"
+          title="View compiler problems"
+          className="inline-flex shrink-0 items-center gap-2 rounded px-1 py-0.5 text-[11px] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+        >
+          <span
+            className={`inline-flex items-center gap-1 ${
+              errorCount > 0 ? 'text-[var(--status-err)]' : ''
+            }`}
+          >
+            <AlertCircle className="h-3 w-3" />
+            <span>{errorCount}</span>
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 ${
+              warningCount > 0 ? 'text-[var(--status-warn)]' : ''
+            }`}
+          >
+            <AlertTriangle className="h-3 w-3" />
+            <span>{warningCount}</span>
+          </span>
+        </button>
+
         {!isNarrow && statusMessage && (
           <span className="truncate text-[var(--accent)]">{statusMessage}</span>
         )}

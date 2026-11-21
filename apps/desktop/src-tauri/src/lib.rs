@@ -2,13 +2,14 @@ use anar_core::preferences::{
     load_preferences, save_preferences, AppPreferences, LayoutState, ThemeMode,
 };
 use anar_core::CompilerBackend;
+use anar_runner::{RunnerAction, RunnerEvent, RunnerManager};
 use anar_workspace::{
     create_directory, create_file, delete_entry, list_directory, open_workspace, read_document,
     rename_entry, save_document, DocumentContent, FileEntry, SaveResult, WorkspaceInfo,
     WorkspaceScope, WorkspaceWatcher,
 };
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
@@ -128,6 +129,10 @@ impl WorkspaceState {
         }
     }
 }
+
+/// Thread-safe backend state for the active Cargo/Rusturbo runner.
+#[derive(Default)]
+pub struct RunnerState(pub Arc<RunnerManager>);
 
 /// Returns the default compiler backend configured in `anar-core`.
 pub fn default_backend() -> CompilerBackend {
@@ -302,6 +307,34 @@ fn toggle_window_fullscreen(window: tauri::WebviewWindow) -> Result<bool, String
     Ok(next)
 }
 
+#[tauri::command]
+fn start_cargo_run(
+    action: RunnerAction,
+    on_event: tauri::ipc::Channel<RunnerEvent>,
+    ws_state: tauri::State<'_, WorkspaceState>,
+    runner_state: tauri::State<'_, RunnerState>,
+) -> Result<u64, String> {
+    let scope = ws_state.scope()?;
+    runner_state
+        .0
+        .start_cargo_run(scope.root(), action, move |evt| {
+            let _ = on_event.send(evt);
+        })
+}
+
+#[tauri::command]
+fn stop_cargo_run(runner_state: tauri::State<'_, RunnerState>) -> Result<bool, String> {
+    runner_state.0.stop()
+}
+
+#[tauri::command]
+fn send_run_stdin(
+    input: String,
+    runner_state: tauri::State<'_, RunnerState>,
+) -> Result<(), String> {
+    runner_state.0.write_stdin(&input)
+}
+
 /// Entry point for the Anar desktop application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -315,6 +348,7 @@ pub fn run() {
             let prefs_path = config_dir.join(PREFERENCES_FILE_NAME);
             app.manage(PreferencesState::load(prefs_path));
             app.manage(WorkspaceState::default());
+            app.manage(RunnerState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -331,7 +365,10 @@ pub fn run() {
             rename_workspace_entry,
             delete_workspace_entry,
             is_window_fullscreen,
-            toggle_window_fullscreen
+            toggle_window_fullscreen,
+            start_cargo_run,
+            stop_cargo_run,
+            send_run_stdin
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anar");

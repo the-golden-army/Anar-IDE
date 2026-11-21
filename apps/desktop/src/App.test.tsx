@@ -3,14 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { PREFS_STORAGE_KEY, THEME_STORAGE_KEY } from './services/preferencesClient';
 import { DEFAULT_PREFERENCES } from './types/preferences';
+import type { RunnerAction, RunnerEvent } from './types/runner';
 import type { WorkspaceFsEvent } from './types/workspace';
 
 const invokeMock = vi.fn();
 const fsListeners = new Set<(event: { payload: WorkspaceFsEvent[] }) => void>();
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
+vi.mock('@tauri-apps/api/core', () => {
+  class MockChannel<T = unknown> {
+    onmessage: ((msg: T) => void) | null = null;
+    constructor(onmessage?: (msg: T) => void) {
+      this.onmessage = onmessage ?? null;
+    }
+  }
+  return {
+    invoke: (...args: unknown[]) => invokeMock(...args),
+    Channel: MockChannel,
+  };
+});
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(
@@ -94,6 +104,8 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
 
   let prefs = { ...DEFAULT_PREFERENCES };
   let fullscreen = false;
+  let activeChannel: { onmessage: ((msg: RunnerEvent) => void) | null } | null = null;
+  const stdinInputs: string[] = [];
 
   const listDir = (relDir: string) => {
     if (relDir === '') {
@@ -195,12 +207,66 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
       case 'toggle_window_fullscreen':
         fullscreen = !fullscreen;
         return fullscreen;
+      case 'start_cargo_run': {
+        const action = payload?.action as RunnerAction;
+        activeChannel = payload?.onEvent as { onmessage: ((msg: RunnerEvent) => void) | null };
+        queueMicrotask(() => {
+          activeChannel?.onmessage?.({
+            type: 'started',
+            runId: 1,
+            action,
+            command: `cargo ${action} --message-format=json`,
+          });
+          activeChannel?.onmessage?.({
+            type: 'output',
+            runId: 1,
+            stream: 'stdout',
+            line: 'give me a value',
+          });
+        });
+        return 1;
+      }
+      case 'send_run_stdin': {
+        const input = (payload?.input as string) ?? '';
+        stdinInputs.push(input);
+        queueMicrotask(() => {
+          activeChannel?.onmessage?.({
+            type: 'output',
+            runId: 1,
+            stream: 'stdout',
+            line: `this is the value ${input}`,
+          });
+          activeChannel?.onmessage?.({
+            type: 'finished',
+            runId: 1,
+            action: 'run',
+            exitCode: 0,
+            cancelled: false,
+            durationMs: 120,
+          });
+        });
+        return null;
+      }
+      case 'stop_cargo_run':
+        activeChannel?.onmessage?.({
+          type: 'finished',
+          runId: 1,
+          action: 'run',
+          exitCode: null,
+          cancelled: true,
+          durationMs: 50,
+        });
+        return true;
       default:
         return prefs;
     }
   });
 
-  return { files };
+  return {
+    files,
+    stdinInputs,
+    emitRunnerEvent: (event: RunnerEvent) => activeChannel?.onmessage?.(event),
+  };
 }
 
 describe('Anar App Shell, Themes & Phase 3 Editor', () => {
@@ -299,7 +365,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Problems' }));
-    expect(screen.getByText(/Clickable compiler diagnostics/i)).toBeInTheDocument();
+    expect(screen.getByText(/No compiler errors or warnings/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Source Control' }));
     expect(screen.getByText(/Git branch status/i)).toBeInTheDocument();
@@ -568,6 +634,68 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
       expect(screen.getByRole('button', { name: 'Enter fullscreen' })).toHaveAttribute(
         'aria-pressed',
         'false',
+      );
+    });
+  });
+
+  it('runs Cargo project, streams Output + stdin, and jumps to Problems diagnostics', async () => {
+    const { stdinInputs, emitRunnerEvent } = setupMockRustWorkspace();
+    render(<App />);
+
+    // Open workspace first.
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'main.rs' })).toBeInTheDocument();
+    });
+
+    // Click Run in TitleBar.
+    fireEvent.click(screen.getByRole('button', { name: 'Run project' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-output')).toHaveTextContent('give me a value');
+    });
+
+    // Send interactive stdin line while process is running.
+    const stdinInput = screen.getByLabelText('Process stdin input');
+    fireEvent.change(stdinInput, { target: { value: '42' } });
+    fireEvent.submit(stdinInput.closest('form')!);
+
+    await waitFor(() => {
+      expect(stdinInputs).toEqual(['42']);
+      expect(screen.getByTestId('runner-output')).toHaveTextContent('this is the value 42');
+    });
+
+    // Emit a compiler error diagnostic and click it in the Problems tab.
+    act(() => {
+      emitRunnerEvent({
+        type: 'diagnostic',
+        runId: 1,
+        diagnostic: {
+          severity: 'error',
+          code: 'E0308',
+          message: 'mismatched types',
+          rendered: 'error[E0308]: mismatched types\n',
+          primarySpan: {
+            fileName: 'src/main.rs',
+            lineStart: 2,
+            lineEnd: 2,
+            columnStart: 5,
+            columnEnd: 12,
+            isPrimary: true,
+            label: 'expected `i32`',
+          },
+          spans: [],
+        },
+      });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open problems panel' }));
+    const problemBtn = await screen.findByRole('button', { name: /mismatched types/i });
+    fireEvent.click(problemBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('codemirror-editor')).toHaveAttribute(
+        'data-active-path',
+        'src/main.rs',
       );
     });
   });
