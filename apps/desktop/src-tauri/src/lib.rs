@@ -4,8 +4,8 @@ use anar_core::preferences::{
 use anar_core::CompilerBackend;
 use anar_workspace::{
     create_directory, create_file, delete_entry, list_directory, open_workspace, read_document,
-    rename_entry, save_document, DocumentContent, FileEntry, SaveResult, WorkspaceFsEvent,
-    WorkspaceInfo, WorkspaceScope, WorkspaceWatcher,
+    rename_entry, save_document, DocumentContent, FileEntry, SaveResult, WorkspaceInfo,
+    WorkspaceScope, WorkspaceWatcher,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -144,10 +144,10 @@ fn open_workspace_with_optional_emitter(
     let info = open_workspace(&scope).map_err(|e| e.to_string())?;
 
     let watcher = if let Some(handle) = app {
-        let w = WorkspaceWatcher::start(scope.clone(), move |events: Vec<WorkspaceFsEvent>| {
+        let watcher_res = WorkspaceWatcher::start(scope.clone(), move |events| {
             let _ = handle.emit(WORKSPACE_FS_EVENT_NAME, events);
-        })
-        .map_err(|e| e.to_string())?;
+        });
+        let w = watcher_res.map_err(|e| e.to_string())?;
         Some(w)
     } else {
         None
@@ -186,15 +186,16 @@ async fn pick_workspace_folder(
     prefs_state: tauri::State<'_, PreferencesState>,
 ) -> Result<Option<WorkspaceInfo>, String> {
     let app_for_dialog = app.clone();
-    let picked = tauri::async_runtime::spawn_blocking(move || {
+    let dialog_handle = tauri::async_runtime::spawn_blocking(move || {
         app_for_dialog
             .dialog()
             .file()
             .set_title("Open Rust Project Folder")
             .blocking_pick_folder()
-    })
-    .await
-    .map_err(|err| format!("folder dialog task failed: {err}"))?;
+    });
+    let picked = dialog_handle
+        .await
+        .map_err(|err| format!("folder dialog task failed: {err}"))?;
 
     let Some(file_path) = picked else {
         return Ok(None);

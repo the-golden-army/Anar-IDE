@@ -109,10 +109,9 @@ pub fn list_directory(scope: &WorkspaceScope, rel_dir: &Path) -> Result<Vec<File
     }
 
     entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-            .then_with(|| a.name.cmp(&b.name))
+        let dir_ord = b.is_dir.cmp(&a.is_dir);
+        let lower_ord = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+        dir_ord.then(lower_ord).then_with(|| a.name.cmp(&b.name))
     });
 
     Ok(entries)

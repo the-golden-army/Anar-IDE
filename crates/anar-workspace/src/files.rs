@@ -95,11 +95,8 @@ pub fn read_document(scope: &WorkspaceScope, rel_path: &Path) -> Result<Document
     let relative_path = scope
         .to_relative_string(&resolved)
         .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
-    let name = resolved
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or(&relative_path)
-        .to_string();
+    let file_name = resolved.file_name().and_then(|s| s.to_str());
+    let name = file_name.unwrap_or(&relative_path).to_string();
 
     Ok(DocumentContent {
         relative_path,
@@ -119,10 +116,7 @@ pub fn save_document(scope: &WorkspaceScope, rel_path: &Path, content: &str) -> 
         fs::create_dir_all(parent)?;
     }
 
-    let file_name = resolved
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("file");
+    let file_name = resolved.file_name().and_then(|s| s.to_str()).unwrap_or("file");
     let tmp_name = format!(".{file_name}.anar-tmp-{}", std::process::id());
     let tmp_path = resolved.with_file_name(tmp_name);
 
@@ -162,13 +156,11 @@ pub fn create_file(scope: &WorkspaceScope, rel_path: &Path) -> Result<String> {
     if let Some(parent) = resolved.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&resolved)?;
-    Ok(scope
+    fs::OpenOptions::new().write(true).create_new(true).open(&resolved)?;
+    let relative = scope
         .to_relative_string(&resolved)
-        .unwrap_or_else(|| rel_path.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| rel_path.to_string_lossy().into_owned());
+    Ok(relative)
 }
 
 /// Creates a new directory (and parents if needed) inside `scope`.
@@ -200,9 +192,10 @@ pub fn rename_entry(scope: &WorkspaceScope, from: &Path, to: &Path) -> Result<St
         fs::create_dir_all(parent)?;
     }
     fs::rename(&src, &dst)?;
-    Ok(scope
+    let relative = scope
         .to_relative_string(&dst)
-        .unwrap_or_else(|| to.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| to.to_string_lossy().into_owned());
+    Ok(relative)
 }
 
 /// Deletes a file or directory inside `scope` (never allowing deletion of the root itself).

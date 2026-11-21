@@ -49,10 +49,12 @@ impl WorkspaceWatcher {
         let self_saves_worker = Arc::clone(&self_saves);
         let root_clone = scope.root().to_path_buf();
 
-        let mut watcher = notify::recommended_watcher(move |res| {
+        let watcher_res = notify::recommended_watcher(move |res| {
             let _ = raw_tx.send(res);
-        })
-        .map_err(|err| WorkspaceError::Watcher(format!("failed to initialize watcher: {err}")))?;
+        });
+        let mut watcher = watcher_res.map_err(|err| {
+            WorkspaceError::Watcher(format!("failed to initialize watcher: {err}"))
+        })?;
 
         watcher
             .watch(scope.root(), RecursiveMode::Recursive)

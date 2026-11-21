@@ -33,12 +33,11 @@ impl WorkspaceScope {
 
     /// Returns the display name of the workspace root folder.
     pub fn name(&self) -> String {
-        self.root
-            .file_name()
-            .and_then(|s| s.to_str())
-            .filter(|s| !s.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| self.root.display().to_string())
+        let os_name = self.root.file_name().and_then(|s| s.to_str());
+        match os_name {
+            Some(name) if !name.is_empty() => name.to_string(),
+            _ => self.root.display().to_string(),
+        }
     }
 
     /// Resolves an existing path inside the workspace, blocking `..` and symlink escapes.
