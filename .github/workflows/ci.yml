@@ -79,4 +79,18 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Rust tests
-        run: cargo test --workspace --all-targets
+        shell: bash
+        run: |
+          if ! OUT=$(cargo test --workspace --all-targets 2>&1); then
+            echo "$OUT"
+            if [ "${{ runner.os }}" = "Windows" ]; then
+              FLAT=$(printf '%s' "$OUT" | tail -n 60 | sed ':a;N;$!ba;s/\n/ | /g' || true)
+              for i in 0 1000 2000 3000; do
+                CHUNK="${FLAT:$i:1000}"
+                if [ -n "$CHUNK" ]; then
+                  echo "::warning::$CHUNK"
+                fi
+              done
+            fi
+            exit 1
+          fi
