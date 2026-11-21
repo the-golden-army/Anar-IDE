@@ -1,5 +1,4 @@
 import { FolderOpen, Keyboard, Plus, Sparkles } from 'lucide-react';
-import { useState } from 'react';
 import type { RecentWorkspace } from '../types/preferences';
 
 const ECOSYSTEM_TARGETS = [
@@ -26,16 +25,16 @@ const SHORTCUTS = [
 interface WelcomeScreenProps {
   recentWorkspaces: RecentWorkspace[];
   onOpenFolder: () => void;
+  onNewProject: () => void;
   onOpenRecent: (path: string) => void;
 }
 
 export function WelcomeScreen({
   recentWorkspaces,
   onOpenFolder,
+  onNewProject,
   onOpenRecent,
 }: WelcomeScreenProps) {
-  const [notice, setNotice] = useState<string | null>(null);
-
   return (
     <div
       className="anar-scroll flex h-full w-full flex-1 flex-col items-center overflow-y-auto px-4 py-8 sm:px-8 sm:py-12"
@@ -66,15 +65,6 @@ export function WelcomeScreen({
           </div>
         </header>
 
-        {notice && (
-          <div
-            role="status"
-            className="rounded-[var(--radius-md)] border border-[var(--accent-ring)] bg-[var(--accent-muted)] px-3 py-2 text-xs text-[var(--text-primary)]"
-          >
-            {notice}
-          </div>
-        )}
-
         <section aria-label="Start actions" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button
             type="button"
@@ -94,7 +84,7 @@ export function WelcomeScreen({
 
           <button
             type="button"
-            onClick={() => setNotice('Framework project templates arrive in Phase 6.')}
+            onClick={onNewProject}
             className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 text-left transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-hover)]"
           >
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-muted)] text-[var(--accent)]">
@@ -103,7 +93,7 @@ export function WelcomeScreen({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--text-primary)]">New Rust Project</p>
               <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                Scaffold a binary or framework template (Phase 6).
+                Scaffold a binary, library, or Rust framework template.
               </p>
             </div>
           </button>

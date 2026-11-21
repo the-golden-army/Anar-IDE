@@ -314,6 +314,96 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
             newText: 'fn main() {\n    println!("formatted anar");\n}\n',
           },
         ];
+      case 'detect_workspace_frameworks':
+        return {
+          packageName: 'demo',
+          workspaceMembers: [],
+          detected: [
+            {
+              kind: 'axum',
+              displayName: 'Axum',
+              crateName: 'axum',
+              category: 'web-api',
+              versionSpec: '0.7',
+              resolvedVersion: '0.7.9',
+              sourceManifest: 'Cargo.toml',
+              direct: true,
+            },
+          ],
+          profiles: [
+            {
+              id: 'axum-serve',
+              label: 'Axum Server (Dev)',
+              description: 'Runs the Axum HTTP server in debug mode.',
+              framework: 'axum',
+              program: 'cargo',
+              args: ['run', '--message-format=json'],
+              workingSubdir: null,
+              defaultPort: 3000,
+              readinessHints: ['listening on'],
+              requiredTool: 'cargo',
+              toolAvailable: true,
+              parseCargoJson: true,
+            },
+          ],
+          defaultProfileId: 'axum-serve',
+        };
+      case 'list_project_templates':
+        return [
+          {
+            id: 'binary',
+            name: 'Rust Binary (bin)',
+            description: 'Minimal executable crate with `src/main.rs`.',
+            category: 'Standard',
+            framework: null,
+          },
+          {
+            id: 'axum',
+            name: 'Axum Web API',
+            description: 'Async HTTP API with Axum + Tokio listening on port 3000.',
+            category: 'Web API',
+            framework: 'axum',
+          },
+        ];
+      case 'pick_parent_folder':
+        return '/tmp/projects';
+      case 'create_project_from_template': {
+        const name = (payload?.projectName as string) || 'new-app';
+        const parentDir = (payload?.parentDir as string) || '/tmp/projects';
+        return {
+          rootPath: `${parentDir}/${name}`,
+          name,
+          isCargoProject: true,
+          entries: listDir(''),
+        };
+      }
+      case 'start_profile_run': {
+        const profileId = (payload?.profileId as string) || 'axum-serve';
+        activeChannel = payload?.onEvent as { onmessage: ((msg: RunnerEvent) => void) | null };
+        queueMicrotask(() => {
+          activeChannel?.onmessage?.({
+            type: 'started',
+            runId: 2,
+            action: 'run',
+            command: `cargo run --message-format=json (${profileId})`,
+          });
+          activeChannel?.onmessage?.({
+            type: 'output',
+            runId: 2,
+            stream: 'stdout',
+            line: 'listening on http://127.0.0.1:3000',
+          });
+          activeChannel?.onmessage?.({
+            type: 'finished',
+            runId: 2,
+            action: 'run',
+            exitCode: 0,
+            cancelled: false,
+            durationMs: 90,
+          });
+        });
+        return 2;
+      }
       default:
         return prefs;
     }
@@ -842,6 +932,64 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
         'data-active-path',
         'src/lib.rs',
       );
+    });
+  });
+
+  it('detects workspace frameworks, displays run profiles, and runs a profile', async () => {
+    setupMockRustWorkspace();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('statusbar-frameworks')).toHaveTextContent('Axum');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle right inspector panel' }));
+    const frameworkSection = screen.getByTestId('inspector-framework-section');
+    expect(frameworkSection).toHaveTextContent('Axum');
+    expect(frameworkSection).toHaveTextContent('0.7.9');
+    expect(frameworkSection).toHaveTextContent('Axum Server (Dev)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run profile Axum Server (Dev)' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'start_profile_run',
+        expect.objectContaining({ profileId: 'axum-serve' }),
+      );
+      expect(screen.getByTestId('bottom-panel')).toHaveTextContent(
+        'listening on http://127.0.0.1:3000',
+      );
+    });
+  });
+
+  it('scaffolds a new project from template via NewProjectModal', async () => {
+    setupMockRustWorkspace();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /new rust project/i }));
+    const modal = await screen.findByTestId('new-project-modal');
+    expect(modal).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-card-axum')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'hello-axum' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Parent directory')).toHaveValue('/tmp/projects');
+    });
+
+    fireEvent.click(screen.getByTestId('template-card-axum'));
+    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_project_from_template', {
+        parentDir: '/tmp/projects',
+        projectName: 'hello-axum',
+        template: 'axum',
+      });
+      expect(screen.getByTestId('titlebar')).toHaveTextContent('hello-axum');
     });
   });
 });
