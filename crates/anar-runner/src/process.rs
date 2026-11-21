@@ -3,7 +3,7 @@ use crate::{cargo_args_for, executable_for, OutputStream, RunnerAction, RunnerEv
 use anar_core::{CompilerBackend, DiagnosticItem};
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
