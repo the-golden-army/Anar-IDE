@@ -295,10 +295,10 @@ pub fn parse_definition_response(result: &Value, workspace_root: &Path) -> Vec<L
         let uri_and_range = if let Some(uri) = entry.get("uri").and_then(Value::as_str) {
             entry.get("range").map(|r| (uri, r))
         } else if let Some(uri) = entry.get("targetUri").and_then(Value::as_str) {
-            entry
+            let range = entry
                 .get("targetSelectionRange")
-                .or_else(|| entry.get("targetRange"))
-                .map(|r| (uri, r))
+                .or_else(|| entry.get("targetRange"));
+            range.map(|r| (uri, r))
         } else {
             None
         };

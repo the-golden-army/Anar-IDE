@@ -119,11 +119,13 @@ impl LspManager {
 
     /// Restarts `rust-analyzer` for the last configured workspace, if any.
     pub fn restart(self: &Arc<Self>) -> Result<(), String> {
-        let saved = self
-            .callbacks
-            .lock()
-            .map_err(|_| "LSP state lock poisoned".to_string())?
-            .clone();
+        let saved = {
+            let guard = self
+                .callbacks
+                .lock()
+                .map_err(|_| "LSP state lock poisoned".to_string())?;
+            guard.clone()
+        };
         let Some((root, status_cb, diag_cb)) = saved else {
             return Err("No workspace is currently open for rust-analyzer".to_string());
         };
@@ -743,9 +745,7 @@ impl LspManager {
         let id = self.next_id();
         let (tx, rx) = mpsc::channel();
         {
-            let mut map = pending
-                .lock()
-                .map_err(|_| "LSP pending lock poisoned".to_string())?;
+            let mut map = pending.lock().map_err(|_| "LSP pending lock poisoned".to_string())?;
             map.insert(id, tx);
         }
 
