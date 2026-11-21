@@ -22,7 +22,9 @@ impl WorkspaceScope {
             let msg = format!("workspace path '{}' is not a directory", canonical.display());
             return Err(WorkspaceError::NotDirectory(msg));
         }
-        Ok(Self { root: canonical })
+        Ok(Self {
+            root: canonical,
+        })
     }
 
     /// Returns the canonical workspace root path.

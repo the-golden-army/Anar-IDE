@@ -157,7 +157,11 @@ impl AppPreferences {
             return;
         }
         self.recent_workspaces.retain(|item| item.path != path);
-        self.recent_workspaces.insert(0, RecentWorkspace { name, path });
+        let entry = RecentWorkspace {
+            name,
+            path,
+        };
+        self.recent_workspaces.insert(0, entry);
         self.recent_workspaces.truncate(MAX_RECENT_WORKSPACES);
     }
 }
