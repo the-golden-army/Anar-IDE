@@ -295,21 +295,16 @@ impl LspManager {
 
         thread::spawn(move || {
             let mut buf_reader = BufReader::new(reader);
-            loop {
-                match read_lsp_message(&mut buf_reader) {
-                    Ok(Some(msg)) => {
-                        Self::dispatch_incoming(
-                            &msg,
-                            &root_buf,
-                            &pending_reader,
-                            &writer_for_acks,
-                            &manager,
-                            &status_cb_reader,
-                            &diag_cb_reader,
-                        );
-                    }
-                    Ok(None) | Err(_) => break,
-                }
+            while let Ok(Some(msg)) = read_lsp_message(&mut buf_reader) {
+                Self::dispatch_incoming(
+                    &msg,
+                    &root_buf,
+                    &pending_reader,
+                    &writer_for_acks,
+                    &manager,
+                    &status_cb_reader,
+                    &diag_cb_reader,
+                );
             }
 
             if let Ok(mut guard) = pending_reader.lock() {
