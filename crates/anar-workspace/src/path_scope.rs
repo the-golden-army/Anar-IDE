@@ -62,9 +62,7 @@ impl WorkspaceScope {
     /// Resolves a path for creating or overwriting a file/directory inside the workspace.
     pub fn resolve_for_write(&self, rel_or_abs: &Path) -> Result<PathBuf> {
         if rel_or_abs.as_os_str().is_empty() {
-            return Err(WorkspaceError::PathEscape(
-                "cannot write to empty path".to_string(),
-            ));
+            return Err(WorkspaceError::PathEscape("cannot write to empty path".to_string()));
         }
 
         let candidate = self.normalize_candidate(rel_or_abs)?;

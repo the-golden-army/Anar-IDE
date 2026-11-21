@@ -113,11 +113,7 @@ pub fn read_document(scope: &WorkspaceScope, rel_path: &Path) -> Result<Document
 }
 
 /// Atomically writes `content` to `rel_path` inside `scope`.
-pub fn save_document(
-    scope: &WorkspaceScope,
-    rel_path: &Path,
-    content: &str,
-) -> Result<SaveResult> {
+pub fn save_document(scope: &WorkspaceScope, rel_path: &Path, content: &str) -> Result<SaveResult> {
     let resolved = scope.resolve_for_write(rel_path)?;
     if let Some(parent) = resolved.parent() {
         fs::create_dir_all(parent)?;
@@ -213,9 +209,8 @@ pub fn rename_entry(scope: &WorkspaceScope, from: &Path, to: &Path) -> Result<St
 pub fn delete_entry(scope: &WorkspaceScope, rel_path: &Path) -> Result<()> {
     let resolved = scope.resolve_existing(rel_path)?;
     if resolved == scope.root() {
-        return Err(WorkspaceError::PathEscape(
-            "cannot delete workspace root directory".to_string(),
-        ));
+        let msg = "cannot delete workspace root directory".to_string();
+        return Err(WorkspaceError::PathEscape(msg));
     }
     if resolved.is_dir() {
         fs::remove_dir_all(&resolved)?;

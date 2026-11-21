@@ -12,8 +12,9 @@ pub mod watcher;
 pub use error::{Result, WorkspaceError};
 pub use files::{
     create_directory, create_file, delete_entry, read_document, rename_entry, save_document,
-    DocumentContent, LineEnding, SaveResult, LARGE_FILE_THRESHOLD_BYTES, MAX_FILE_SIZE_BYTES,
 };
+pub use files::{DocumentContent, LineEnding, SaveResult};
+pub use files::{LARGE_FILE_THRESHOLD_BYTES, MAX_FILE_SIZE_BYTES};
 pub use path_scope::WorkspaceScope;
 pub use tree::{
     is_ignored_dir_name, is_ignored_relative_path, list_directory, open_workspace, FileEntry,
@@ -74,11 +75,7 @@ mod tests {
         fs::create_dir_all(dir.join("src")).unwrap();
         fs::create_dir_all(dir.join("target/debug")).unwrap();
         fs::create_dir_all(dir.join(".git")).unwrap();
-        fs::write(
-            dir.join("Cargo.toml"),
-            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
-        )
-        .unwrap();
+        fs::write(dir.join("Cargo.toml"), "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n").unwrap();
         fs::write(dir.join("src/main.rs"), "fn main() {\n    println!(\"hi\");\n}\n").unwrap();
         fs::write(dir.join("target/debug/junk"), "ignored").unwrap();
         dir
@@ -120,14 +117,10 @@ mod tests {
         let dir = make_temp_workspace("escape");
         let scope = WorkspaceScope::open(&dir).unwrap();
 
-        assert!(matches!(
-            scope.resolve_existing(Path::new("../outside.rs")),
-            Err(WorkspaceError::PathEscape(_))
-        ));
-        assert!(matches!(
-            scope.resolve_for_write(Path::new("src/../../outside.rs")),
-            Err(WorkspaceError::PathEscape(_))
-        ));
+        let existing_err = scope.resolve_existing(Path::new("../outside.rs"));
+        assert!(matches!(existing_err, Err(WorkspaceError::PathEscape(_))));
+        let write_err = scope.resolve_for_write(Path::new("src/../../outside.rs"));
+        assert!(matches!(write_err, Err(WorkspaceError::PathEscape(_))));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -169,10 +162,8 @@ mod tests {
         assert!(!dir.join("src/mod.rs").exists());
 
         fs::write(dir.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
-        assert!(matches!(
-            read_document(&scope, Path::new("blob.bin")),
-            Err(WorkspaceError::BinaryOrInvalidUtf8(_))
-        ));
+        let bin_err = read_document(&scope, Path::new("blob.bin"));
+        assert!(matches!(bin_err, Err(WorkspaceError::BinaryOrInvalidUtf8(_))));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -201,11 +192,7 @@ mod tests {
         )
         .unwrap();
 
-        fs::write(
-            dir.join("src/main.rs"),
-            "fn main() { println!(\"external\"); }\n",
-        )
-        .unwrap();
+        fs::write(dir.join("src/main.rs"), "fn main() { println!(\"external\"); }\n").unwrap();
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         let mut saw_external = false;
@@ -221,10 +208,8 @@ mod tests {
 
         assert!(saw_external, "expected watcher to report src/main.rs");
         let recorded = events.lock().unwrap();
-        assert!(
-            !recorded.iter().any(|e| e.relative_path == "Cargo.toml"),
-            "self-saved Cargo.toml should be suppressed"
-        );
+        let saw_self = recorded.iter().any(|e| e.relative_path == "Cargo.toml");
+        assert!(!saw_self, "self-saved Cargo.toml should be suppressed");
 
         drop(watcher);
         let _ = fs::remove_dir_all(&dir);
