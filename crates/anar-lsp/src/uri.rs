@@ -14,20 +14,17 @@ pub fn path_to_file_uri(path: &Path) -> String {
 
     let mut encoded = String::from("file://");
     for byte in normalized.bytes() {
-        match byte {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'.'
-            | b'_'
-            | b'~'
-            | b'/'
-            | b':' => encoded.push(byte as char),
-            _ => encoded.push_str(&format!("%{byte:02X}")),
+        if is_unreserved_uri_byte(byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
         }
     }
     encoded
+}
+
+fn is_unreserved_uri_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/' | b':')
 }
 
 /// Parses a `file://` URI into a local `PathBuf`, returning `None` for non-file URIs.

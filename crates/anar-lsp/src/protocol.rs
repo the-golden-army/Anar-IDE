@@ -137,8 +137,9 @@ pub fn read_lsp_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>, Str
         }
     }
 
-    let length =
-        content_length.ok_or_else(|| "missing Content-Length header in LSP frame".to_string())?;
+    let Some(length) = content_length else {
+        return Err("missing Content-Length header in LSP frame".to_string());
+    };
     let mut body = vec![0u8; length];
     reader
         .read_exact(&mut body)
@@ -204,6 +205,10 @@ pub fn parse_publish_diagnostics(
     })
 }
 
+fn str_field(val: &Value, key: &str) -> Option<String> {
+    val.get(key).and_then(Value::as_str).map(ToString::to_string)
+}
+
 /// Parses `textDocument/completion` (`CompletionList | CompletionItem[] | null`).
 pub fn parse_completion_response(result: &Value) -> Vec<LspCompletionItem> {
     let items_val = if let Some(arr) = result.as_array() {
@@ -220,21 +225,20 @@ pub fn parse_completion_response(result: &Value) -> Vec<LspCompletionItem> {
             continue;
         };
         let documentation = item.get("documentation").and_then(|doc| {
-            if let Some(s) = doc.as_str() {
-                return Some(s.to_string());
-            }
-            doc.get("value").and_then(Value::as_str).map(ToString::to_string)
+            doc.as_str()
+                .map(ToString::to_string)
+                .or_else(|| str_field(doc, "value"))
         });
         out.push(LspCompletionItem {
             label: label.to_string(),
-            detail: item.get("detail").and_then(Value::as_str).map(ToString::to_string),
+            detail: str_field(item, "detail"),
             documentation,
             kind: item
                 .get("kind")
                 .and_then(Value::as_u64)
                 .and_then(|k| u32::try_from(k).ok()),
-            insert_text: item.get("insertText").and_then(Value::as_str).map(ToString::to_string),
-            sort_text: item.get("sortText").and_then(Value::as_str).map(ToString::to_string),
+            insert_text: str_field(item, "insertText"),
+            sort_text: str_field(item, "sortText"),
         });
     }
     out

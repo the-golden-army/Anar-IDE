@@ -705,13 +705,14 @@ impl LspManager {
     }
 
     fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
-        let tx = self
-            .active
-            .lock()
-            .ok()
-            .and_then(|g| g.as_ref().map(|s| s.writer_tx.clone()));
-        let Some(writer_tx) = tx else {
-            return Ok(());
+        let writer_tx = {
+            let Ok(guard) = self.active.lock() else {
+                return Ok(());
+            };
+            let Some(session) = guard.as_ref() else {
+                return Ok(());
+            };
+            session.writer_tx.clone()
         };
         let payload = json!({
             "jsonrpc": "2.0",
