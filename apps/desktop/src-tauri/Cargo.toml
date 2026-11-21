@@ -11,6 +11,7 @@ authors.workspace = true
 [lib]
 name = "anar_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+test = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
