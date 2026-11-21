@@ -99,13 +99,15 @@ pub struct RusturboTomlSummary {
 pub fn probe_rusturbo_status(workspace_root: Option<&Path>) -> RusturboStatus {
     let binary = find_rusturbo_binary();
     let version = binary.as_deref().and_then(read_rusturbo_version);
+    // Treat broken wrapper shims (e.g. npm wrapper missing its native binary) as unavailable.
+    let available = binary.is_some() && version.is_some();
 
     let toml_summary = workspace_root
         .map(|root| inspect_rusturbo_toml(&root.join("rusturbo.toml")))
         .unwrap_or_default();
 
     RusturboStatus {
-        available: binary.is_some(),
+        available,
         binary_path: binary.map(|p| p.to_string_lossy().into_owned()),
         version,
         config_exists: toml_summary.exists,
@@ -598,5 +600,20 @@ mod tests {
         assert_eq!(span.file_name, "src/main.rs");
         assert_eq!(span.line_start, 14);
         assert_eq!(span.column_start, 9);
+    }
+
+    #[test]
+    fn read_rusturbo_version_rejects_non_executable_or_missing_binary() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir_name = format!("anar-rt-ver-{}-{nanos}", std::process::id());
+        let dir = std::env::temp_dir().join(dir_name);
+        fs::create_dir_all(&dir).unwrap();
+        let failing = dir.join("missing-bin");
+        fs::write(&failing, "").unwrap();
+        assert!(read_rusturbo_version(&failing).is_none());
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -144,7 +144,7 @@ export function InspectorPanel({
                 type="button"
                 onClick={onRestartLsp}
                 title="Restart rust-analyzer"
-                className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               >
                 <RotateCw className="h-3 w-3" />
                 <span>Restart</span>
@@ -157,7 +157,7 @@ export function InspectorPanel({
           </p>
           {lspStatus.detail && (
             <p
-              className="mt-1 truncate text-[11px] text-[var(--text-muted)]"
+              className="mt-1 truncate text-[0.75rem] text-[var(--text-muted)]"
               title={lspStatus.detail}
             >
               {lspStatus.detail}
@@ -169,13 +169,13 @@ export function InspectorPanel({
               disabled={!canFormat}
               onClick={onFormatDocument}
               title="Format Rust file (Shift+Alt+F)"
-              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-2 py-1 text-[11px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Sparkles className="h-3 w-3 text-[var(--accent)]" />
               <span>Format Rust File</span>
             </button>
           </div>
-          <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+          <p className="mt-2 text-[0.6875rem] text-[var(--text-muted)]">
             F12 / Ctrl+Click: Go to Definition · Shift+Alt+F: Format
           </p>
         </div>
@@ -189,7 +189,7 @@ export function InspectorPanel({
               <Zap className="h-3.5 w-3.5 text-[var(--accent)]" />
               <span>Compiler Backend</span>
             </div>
-            <span className="rounded bg-[var(--bg-panel)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+            <span className="rounded bg-[var(--bg-panel)] px-1.5 py-0.5 text-[0.6875rem] text-[var(--text-muted)]">
               {rusturboStatus?.available
                 ? (rusturboStatus.version ?? 'rusturbo ready')
                 : 'rusturbo not found'}
@@ -207,7 +207,7 @@ export function InspectorPanel({
               disabled={isRunning}
               aria-pressed={compilerBackend === 'cargo'}
               onClick={() => onSelectCompilerBackend('cargo')}
-              className={`rounded-[var(--radius-sm)] px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`rounded-[var(--radius-sm)] px-2 py-1 text-xs font-medium transition-colors ${
                 compilerBackend === 'cargo'
                   ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -226,7 +226,7 @@ export function InspectorPanel({
                   : 'Install rusturbo on PATH to enable acceleration'
               }
               onClick={() => onSelectCompilerBackend('rusturbo')}
-              className={`rounded-[var(--radius-sm)] px-2 py-1 text-[11px] font-medium transition-colors ${
+              className={`rounded-[var(--radius-sm)] px-2 py-1 text-xs font-medium transition-colors ${
                 compilerBackend === 'rusturbo'
                   ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -237,9 +237,16 @@ export function InspectorPanel({
           </div>
 
           {!rusturboStatus?.available ? (
-            <p className="mt-2 text-[10px] text-[var(--text-muted)]">
-              Install Rusturbo to enable shared dependency target caching and fast linker probing.
-            </p>
+            <div className="mt-2 space-y-1 text-[0.6875rem] leading-relaxed text-[var(--text-muted)]">
+              <p>
+                {rusturboStatus?.binaryPath
+                  ? 'Rusturbo wrapper found, but its native binary is missing.'
+                  : 'Install Rusturbo to enable shared dependency target caching and fast linker probing.'}
+              </p>
+              <code className="block rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-2 py-1 font-[family-name:var(--font-mono)] text-[0.6875rem] break-all text-[var(--text-secondary)]">
+                cargo install --git https://github.com/the-golden-army/Rusturbo --locked
+              </code>
+            </div>
           ) : (
             <div className="mt-2 space-y-2">
               {hasWorkspace && (
