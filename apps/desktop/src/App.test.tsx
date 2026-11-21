@@ -158,7 +158,14 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
       case 'set_theme_mode':
         prefs = { ...prefs, theme: (payload?.mode as typeof prefs.theme) ?? prefs.theme };
         return prefs;
+      case 'set_compiler_backend':
+        prefs = {
+          ...prefs,
+          compilerBackend: (payload?.backend as typeof prefs.compilerBackend) ?? 'cargo',
+        };
+        return prefs;
       case 'update_layout_preferences':
+      case 'update_layout_state':
         return prefs;
       case 'pick_workspace_folder':
       case 'open_workspace_folder': {
@@ -227,13 +234,17 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
         return fullscreen;
       case 'start_cargo_run': {
         const action = payload?.action as RunnerAction;
+        const backend = (payload?.backend as string) ?? 'cargo';
         activeChannel = payload?.onEvent as { onmessage: ((msg: RunnerEvent) => void) | null };
         queueMicrotask(() => {
           activeChannel?.onmessage?.({
             type: 'started',
             runId: 1,
             action,
-            command: `cargo ${action} --message-format=json`,
+            command:
+              backend === 'rusturbo' && (action === 'build' || action === 'run')
+                ? `rusturbo --manifest-dir /tmp/demo ${action}`
+                : `cargo ${action} --message-format=json`,
           });
           activeChannel?.onmessage?.({
             type: 'output',
@@ -244,6 +255,47 @@ function setupMockRustWorkspace(options?: { largeFileBytes?: number }) {
         });
         return 1;
       }
+      case 'get_rusturbo_status':
+        return {
+          available: true,
+          binaryPath: '/usr/local/bin/rusturbo',
+          version: 'rusturbo 0.1.2',
+          configExists: false,
+          configuredPreset: null,
+          sharedTargets: null,
+          linkerMode: null,
+          supportsCheck: false,
+          supportsTest: false,
+          supportsJsonDiagnostics: false,
+        };
+      case 'analyze_rusturbo':
+        return {
+          rusturboVersion: '0.1.2',
+          configFound: true,
+          linkerSelected: 'mold',
+          sccacheActive: true,
+          sccachePath: '/usr/bin/sccache',
+          packageCount: 34,
+          edgeCount: 72,
+          duplicateCount: 1,
+          cacheDecision: 'hit',
+          cacheReuse: 'shared_target',
+          cacheKey: 'abc12345',
+          advice: ['Consider trimming unused tokio features'],
+        };
+      case 'init_rusturbo_config':
+        return {
+          available: true,
+          binaryPath: '/usr/local/bin/rusturbo',
+          version: 'rusturbo 0.1.2',
+          configExists: true,
+          configuredPreset: 'auto',
+          sharedTargets: true,
+          linkerMode: 'auto',
+          supportsCheck: false,
+          supportsTest: false,
+          supportsJsonDiagnostics: false,
+        };
       case 'send_run_stdin': {
         const input = (payload?.input as string) ?? '';
         stdinInputs.push(input);
@@ -990,6 +1042,56 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
         template: 'axum',
       });
       expect(screen.getByTestId('titlebar')).toHaveTextContent('hello-axum');
+    });
+  });
+
+  it('switches compiler backend to Rusturbo, runs analyze & init, and accelerates build', async () => {
+    setupMockRustWorkspace();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('statusbar-backend')).toHaveTextContent('Cargo');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle right inspector panel' }));
+    const backendSection = screen.getByTestId('inspector-backend-section');
+    await waitFor(() => {
+      expect(backendSection).toHaveTextContent('rusturbo 0.1.2');
+    });
+
+    fireEvent.click(screen.getByTestId('rusturbo-init-button'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('init_rusturbo_config', {
+        preset: 'auto',
+        profile: 'balanced',
+      });
+      expect(backendSection).toHaveTextContent('rusturbo.toml: preset auto');
+    });
+
+    fireEvent.click(screen.getByTestId('rusturbo-analyze-button'));
+    const analysisCard = await screen.findByTestId('rusturbo-analysis-card');
+    expect(analysisCard).toHaveTextContent('linker: mold');
+    expect(analysisCard).toHaveTextContent('sccache: on');
+    expect(analysisCard).toHaveTextContent('cache: hit');
+    expect(analysisCard).toHaveTextContent('34 crates, 72 edges (1 duplicates)');
+    expect(analysisCard).toHaveTextContent('Consider trimming unused tokio features');
+
+    fireEvent.click(screen.getByTestId('backend-rusturbo'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('set_compiler_backend', { backend: 'rusturbo' });
+      expect(screen.getByTestId('statusbar-backend')).toHaveTextContent('Rusturbo');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build project' }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'start_cargo_run',
+        expect.objectContaining({ action: 'build', backend: 'rusturbo' }),
+      );
+      expect(screen.getByTestId('runner-output')).toHaveTextContent(
+        '$ rusturbo --manifest-dir /tmp/demo build',
+      );
     });
   });
 });

@@ -1,14 +1,19 @@
-import { Cpu, Layers, Play, RotateCw, Sparkles, Zap, X } from 'lucide-react';
+import { Cpu, Gauge, Layers, Play, RotateCw, Sparkles, Zap, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { WorkspaceFrameworkReport } from '../types/frameworks';
 import type { LspStatusEvent } from '../types/lsp';
-import { LAYOUT_LIMITS } from '../types/preferences';
+import { LAYOUT_LIMITS, type CompilerBackend } from '../types/preferences';
+import type { RusturboAnalysis, RusturboStatus } from '../types/runner';
 
 interface InspectorPanelProps {
   open: boolean;
   width: number;
   isCompact: boolean;
   lspStatus: LspStatusEvent;
+  compilerBackend: CompilerBackend;
+  rusturboStatus: RusturboStatus | null;
+  rusturboAnalysis: RusturboAnalysis | null;
+  rusturboBusy: boolean;
   frameworkReport: WorkspaceFrameworkReport | null;
   selectedProfileId: string | null;
   isRunning: boolean;
@@ -16,6 +21,9 @@ interface InspectorPanelProps {
   canFormat: boolean;
   onRestartLsp: () => void;
   onFormatDocument: () => void;
+  onSelectCompilerBackend: (backend: CompilerBackend) => void;
+  onAnalyzeRusturbo: () => void;
+  onInitRusturboConfig: () => void;
   onSelectProfile: (profileId: string) => void;
   onRunProfile: (profileId: string) => void;
   onClose: () => void;
@@ -27,6 +35,10 @@ export function InspectorPanel({
   width,
   isCompact,
   lspStatus,
+  compilerBackend,
+  rusturboStatus,
+  rusturboAnalysis,
+  rusturboBusy,
   frameworkReport,
   selectedProfileId,
   isRunning,
@@ -34,6 +46,9 @@ export function InspectorPanel({
   canFormat,
   onRestartLsp,
   onFormatDocument,
+  onSelectCompilerBackend,
+  onAnalyzeRusturbo,
+  onInitRusturboConfig,
   onSelectProfile,
   onRunProfile,
   onClose,
@@ -165,12 +180,153 @@ export function InspectorPanel({
           </p>
         </div>
 
-        <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-          <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
-            <Zap className="h-3.5 w-3.5 text-[var(--accent)]" />
-            <span>Compiler Backend</span>
+        <div
+          className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3"
+          data-testid="inspector-backend-section"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+              <Zap className="h-3.5 w-3.5 text-[var(--accent)]" />
+              <span>Compiler Backend</span>
+            </div>
+            <span className="rounded bg-[var(--bg-panel)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+              {rusturboStatus?.available
+                ? (rusturboStatus.version ?? 'rusturbo ready')
+                : 'rusturbo not found'}
+            </span>
           </div>
-          <p className="mt-1 text-[var(--text-secondary)]">Cargo default · Rusturbo (Phase 7)</p>
+
+          <div
+            role="group"
+            aria-label="Compiler backend selection"
+            className="mt-2 grid grid-cols-2 gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-0.5"
+          >
+            <button
+              type="button"
+              data-testid="backend-cargo"
+              disabled={isRunning}
+              aria-pressed={compilerBackend === 'cargo'}
+              onClick={() => onSelectCompilerBackend('cargo')}
+              className={`rounded-[var(--radius-sm)] px-2 py-1 text-[11px] font-medium transition-colors ${
+                compilerBackend === 'cargo'
+                  ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              Cargo
+            </button>
+            <button
+              type="button"
+              data-testid="backend-rusturbo"
+              disabled={isRunning || (!rusturboStatus?.available && compilerBackend !== 'rusturbo')}
+              aria-pressed={compilerBackend === 'rusturbo'}
+              title={
+                rusturboStatus?.available
+                  ? 'Accelerate Build & Run with Rusturbo'
+                  : 'Install rusturbo on PATH to enable acceleration'
+              }
+              onClick={() => onSelectCompilerBackend('rusturbo')}
+              className={`rounded-[var(--radius-sm)] px-2 py-1 text-[11px] font-medium transition-colors ${
+                compilerBackend === 'rusturbo'
+                  ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              } disabled:cursor-not-allowed disabled:opacity-45`}
+            >
+              Rusturbo
+            </button>
+          </div>
+
+          {!rusturboStatus?.available ? (
+            <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+              Install Rusturbo to enable shared dependency target caching and fast linker probing.
+            </p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              {hasWorkspace && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="rusturbo-analyze-button"
+                    disabled={rusturboBusy}
+                    onClick={onAnalyzeRusturbo}
+                    className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                  >
+                    <Gauge className="h-3 w-3 text-[var(--accent)]" />
+                    <span>{rusturboBusy ? 'Analyzing…' : 'Analyze'}</span>
+                  </button>
+                  {!rusturboStatus.configExists && (
+                    <button
+                      type="button"
+                      data-testid="rusturbo-init-button"
+                      disabled={rusturboBusy}
+                      onClick={onInitRusturboConfig}
+                      className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-2 py-1 text-[11px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                    >
+                      <span>Init rusturbo.toml</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {rusturboStatus.configExists && (
+                <p className="text-[10px] text-[var(--text-secondary)]">
+                  rusturbo.toml: preset{' '}
+                  <span className="font-medium text-[var(--text-primary)]">
+                    {rusturboStatus.configuredPreset ?? 'balanced'}
+                  </span>
+                  {rusturboStatus.linkerMode ? ` · linker ${rusturboStatus.linkerMode}` : ''}
+                </p>
+              )}
+
+              {rusturboAnalysis && (
+                <div
+                  data-testid="rusturbo-analysis-card"
+                  className="space-y-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-2 text-[10px]"
+                >
+                  <div className="flex flex-wrap gap-1.5">
+                    {rusturboAnalysis.linkerSelected && (
+                      <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)]">
+                        linker: {rusturboAnalysis.linkerSelected}
+                      </span>
+                    )}
+                    {rusturboAnalysis.sccacheActive !== null && (
+                      <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[var(--text-primary)]">
+                        sccache: {rusturboAnalysis.sccacheActive ? 'on' : 'off'}
+                      </span>
+                    )}
+                    {rusturboAnalysis.cacheDecision && (
+                      <span className="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-medium text-[var(--accent)]">
+                        cache: {rusturboAnalysis.cacheDecision}
+                      </span>
+                    )}
+                  </div>
+                  {rusturboAnalysis.packageCount !== null && (
+                    <p className="text-[var(--text-secondary)]">
+                      Graph: {rusturboAnalysis.packageCount} crates
+                      {rusturboAnalysis.edgeCount !== null
+                        ? `, ${rusturboAnalysis.edgeCount} edges`
+                        : ''}
+                      {rusturboAnalysis.duplicateCount !== null &&
+                      rusturboAnalysis.duplicateCount > 0
+                        ? ` (${rusturboAnalysis.duplicateCount} duplicates)`
+                        : ''}
+                    </p>
+                  )}
+                  {rusturboAnalysis.advice.length > 0 && (
+                    <ul className="list-disc space-y-0.5 pl-4 text-[var(--text-muted)]">
+                      {rusturboAnalysis.advice.slice(0, 3).map((tip) => (
+                        <li key={tip}>{tip}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[10px] text-[var(--text-muted)]">
+                Build &amp; Run use the selected backend; Check &amp; Test always use Cargo.
+              </p>
+            </div>
+          )}
         </div>
 
         <div

@@ -1,4 +1,5 @@
 use crate::diagnostics::{parse_cargo_stdout_line, ParsedCargoLine};
+use crate::rusturbo::{find_rusturbo_binary, rusturbo_args_for, StderrDiagnosticParser};
 use crate::{cargo_args_for, executable_for, OutputStream, RunnerAction, RunnerEvent};
 use anar_core::{CompilerBackend, DiagnosticItem};
 use std::collections::HashSet;
@@ -102,6 +103,45 @@ impl RunnerManager {
         self.spawn_command(workspace_root, action, exe, &args, true, emit)
     }
 
+    /// Starts a build/run/check/test command using the selected [`CompilerBackend`].
+    pub fn start_run_with_backend<F>(
+        self: &Arc<Self>,
+        workspace_root: &Path,
+        action: RunnerAction,
+        backend: CompilerBackend,
+        emit: F,
+    ) -> Result<u64, String>
+    where
+        F: Fn(RunnerEvent) + Send + Sync + 'static,
+    {
+        if backend == CompilerBackend::Cargo {
+            return self.start_cargo_run(workspace_root, action, emit);
+        }
+
+        let Some(rt_args) = rusturbo_args_for(workspace_root, action) else {
+            // Rusturbo v0.1.2 does not expose `check` or `test`; fall back to Cargo.
+            return self.start_cargo_run(workspace_root, action, emit);
+        };
+
+        let binary = find_rusturbo_binary().ok_or_else(|| {
+            String::from(
+                "rusturbo binary not found on PATH. Install Rusturbo or switch compiler backend to Cargo.",
+            )
+        })?;
+        let program = binary.to_string_lossy().into_owned();
+        let arg_refs: Vec<&str> = rt_args.iter().map(String::as_str).collect();
+        self.spawn_command_with_env(
+            workspace_root,
+            action,
+            &program,
+            &arg_refs,
+            &[("NO_COLOR", "1")],
+            false,
+            true,
+            emit,
+        )
+    }
+
     /// Spawns `program` with `args` in `working_dir` and streams [`RunnerEvent`]s.
     pub fn spawn_command<F>(
         self: &Arc<Self>,
@@ -110,6 +150,33 @@ impl RunnerManager {
         program: &str,
         args: &[&str],
         parse_cargo_json: bool,
+        emit: F,
+    ) -> Result<u64, String>
+    where
+        F: Fn(RunnerEvent) + Send + Sync + 'static,
+    {
+        self.spawn_command_with_env(
+            working_dir,
+            action,
+            program,
+            args,
+            &[],
+            parse_cargo_json,
+            false,
+            emit,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_command_with_env<F>(
+        self: &Arc<Self>,
+        working_dir: &Path,
+        action: RunnerAction,
+        program: &str,
+        args: &[&str],
+        extra_env: &[(&str, &str)],
+        parse_cargo_json: bool,
+        parse_stderr_diagnostics: bool,
         emit: F,
     ) -> Result<u64, String>
     where
@@ -124,6 +191,9 @@ impl RunnerManager {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
 
         #[cfg(unix)]
         {
@@ -184,8 +254,15 @@ impl RunnerManager {
 
             let stderr_handle = stderr.map(|err| {
                 let emit_err = Arc::clone(&emit);
+                let root_clone = root_buf.clone();
                 thread::spawn(move || {
-                    read_stderr_stream(err, run_id, &*emit_err);
+                    read_stderr_stream(
+                        err,
+                        run_id,
+                        &root_clone,
+                        parse_stderr_diagnostics,
+                        &*emit_err,
+                    );
                 })
             });
 
@@ -262,9 +339,27 @@ fn read_stdout_stream<R: std::io::Read, F: Fn(RunnerEvent)>(
     }
 }
 
-fn read_stderr_stream<R: std::io::Read, F: Fn(RunnerEvent)>(reader: R, run_id: u64, emit: &F) {
+fn read_stderr_stream<R: std::io::Read, F: Fn(RunnerEvent)>(
+    reader: R,
+    run_id: u64,
+    workspace_root: &Path,
+    parse_diagnostics: bool,
+    emit: &F,
+) {
+    let mut parser = StderrDiagnosticParser::default();
+    let mut seen = HashSet::<DiagnosticItem>::new();
     let buf = BufReader::new(reader);
     for line in buf.lines().map_while(Result::ok) {
+        if parse_diagnostics {
+            if let Some(diag) = parser.push_line(Some(workspace_root), &line) {
+                if seen.insert(diag.clone()) {
+                    emit(RunnerEvent::Diagnostic {
+                        run_id,
+                        diagnostic: diag,
+                    });
+                }
+            }
+        }
         emit(RunnerEvent::Output {
             run_id,
             stream: OutputStream::Stderr,

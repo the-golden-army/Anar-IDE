@@ -2,6 +2,8 @@ export type ThemeMode = 'dark' | 'light' | 'system';
 
 export type ResolvedTheme = 'dark' | 'light';
 
+export type CompilerBackend = 'cargo' | 'rusturbo';
+
 export type SidebarTab = 'explorer' | 'search' | 'git';
 
 export type BottomTab = 'output' | 'problems' | 'terminal';
@@ -26,6 +28,7 @@ export interface LayoutState {
 export interface AppPreferences {
   version: number;
   theme: ThemeMode;
+  compilerBackend: CompilerBackend;
   layout: LayoutState;
   recentWorkspaces: RecentWorkspace[];
 }
@@ -58,6 +61,7 @@ export const DEFAULT_LAYOUT: LayoutState = {
 export const DEFAULT_PREFERENCES: AppPreferences = {
   version: 1,
   theme: 'system',
+  compilerBackend: 'cargo',
   layout: DEFAULT_LAYOUT,
   recentWorkspaces: [],
 };
