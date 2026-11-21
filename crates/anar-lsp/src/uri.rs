@@ -107,7 +107,10 @@ fn strip_workspace_prefix(path: &Path, workspace_root: &Path) -> Option<String> 
 
 fn normalize_slashes(raw: &str) -> String {
     let replaced = raw.replace('\\', "/");
-    replaced.strip_prefix("//?/").unwrap_or(&replaced).to_string()
+    replaced
+        .strip_prefix("//?/")
+        .unwrap_or(&replaced)
+        .to_string()
 }
 
 fn percent_decode(input: &str) -> Option<String> {
@@ -147,7 +150,10 @@ mod tests {
         let file = Path::new("/tmp/my workspace/src/main.rs");
         let uri = path_to_file_uri(file);
         assert_eq!(uri, "file:///tmp/my%20workspace/src/main.rs");
-        assert_eq!(uri_to_relative_path(&uri, root).as_deref(), Some("src/main.rs"));
+        assert_eq!(
+            uri_to_relative_path(&uri, root).as_deref(),
+            Some("src/main.rs")
+        );
     }
 
     #[test]

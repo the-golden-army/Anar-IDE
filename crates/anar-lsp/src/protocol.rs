@@ -149,7 +149,9 @@ pub fn read_lsp_message<R: BufRead>(reader: &mut R) -> Result<Option<Value>, Str
     };
     let mut body = vec![0u8; length];
     if let Err(err) = reader.read_exact(&mut body) {
-        return Err(format!("failed to read LSP payload ({length} bytes): {err}"));
+        return Err(format!(
+            "failed to read LSP payload ({length} bytes): {err}"
+        ));
     }
 
     match serde_json::from_slice(&body) {
@@ -216,7 +218,9 @@ pub fn parse_publish_diagnostics(
 }
 
 fn str_field(val: &Value, key: &str) -> Option<String> {
-    val.get(key).and_then(Value::as_str).map(ToString::to_string)
+    val.get(key)
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
 }
 
 /// Parses `textDocument/completion` (`CompletionList | CompletionItem[] | null`).
@@ -306,7 +310,9 @@ pub fn parse_definition_response(result: &Value, workspace_root: &Path) -> Vec<L
         let uri_and_range = if let Some(uri) = entry.get("uri").and_then(Value::as_str) {
             entry.get("range").map(|r| (uri, r))
         } else if let Some(uri) = entry.get("targetUri").and_then(Value::as_str) {
-            let range = entry.get("targetSelectionRange").or_else(|| entry.get("targetRange"));
+            let range = entry
+                .get("targetSelectionRange")
+                .or_else(|| entry.get("targetRange"));
             range.map(|r| (uri, r))
         } else {
             None
@@ -449,7 +455,10 @@ mod tests {
         let completions = parse_completion_response(&comp_payload);
         assert_eq!(completions.len(), 1);
         assert_eq!(completions[0].label, "println!");
-        assert_eq!(completions[0].documentation.as_deref(), Some("Prints to stdout."));
+        assert_eq!(
+            completions[0].documentation.as_deref(),
+            Some("Prints to stdout.")
+        );
 
         let hover_payload = json!({
             "contents": { "kind": "markdown", "value": "```rust\nlet x: i32\n```" }
