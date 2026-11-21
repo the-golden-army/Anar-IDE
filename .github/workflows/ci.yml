@@ -76,16 +76,17 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Rust clippy
-        if: runner.os != 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Rust clippy (diagnostic)
-        if: runner.os == 'Linux'
+      - name: Rust tests
+        if: runner.os != 'Windows'
+        run: cargo test --workspace --all-targets
+
+      - name: Rust tests (diagnostic)
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          if ! cargo clippy --workspace --all-targets -- -D warnings 2> clippy.err; then
-            python3 -c 'import pathlib; s=pathlib.Path("clippy.err").read_text()[-1800:].replace("%","%25").replace("\r","%0D").replace("\n","%0A"); print(f"::error::{s}")'
+          if ! cargo test --workspace --all-targets > test.out 2>&1; then
+            python3 -c 'import pathlib; s=pathlib.Path("test.out").read_text()[-1800:].replace("%","%25").replace("\r","%0D").replace("\n","%0A"); print(f"::error::{s}")'
             exit 1
           fi
-
-      - name: Rust tests
-        run: cargo test --workspace --all-targets
