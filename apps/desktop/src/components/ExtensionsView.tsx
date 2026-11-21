@@ -70,14 +70,16 @@ export function ExtensionsView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="extensions-view">
       <div className="flex h-10 shrink-0 items-center justify-between px-3">
-        <span className="text-xs font-semibold text-[var(--text-primary)]">Extensions</span>
-        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+        <span className="text-[0.8125rem] font-semibold text-[var(--text-primary)]">
+          Extensions
+        </span>
+        <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[0.6875rem] text-[var(--text-muted)]">
           UI Preview
         </span>
       </div>
 
       <div className="px-2.5 pb-2">
-        <div className="flex h-7 items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2">
+        <div className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2.5">
           <Search className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
           <input
             type="text"
@@ -90,32 +92,32 @@ export function ExtensionsView() {
         </div>
       </div>
 
-      <div className="anar-scroll flex-1 space-y-1.5 overflow-y-auto px-2.5 pb-3">
+      <div className="anar-scroll flex-1 space-y-2 overflow-y-auto px-2.5 pb-3">
         {filtered.map((ext) => (
           <div
             key={ext.id}
             className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2.5 transition-colors duration-150 hover:border-[var(--border-strong)]"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--accent-ring)] bg-[var(--accent-muted)] text-[var(--accent)]">
-                  <Blocks className="h-3.5 w-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-[var(--text-primary)]">
-                    {ext.name}
-                  </p>
-                  <p className="truncate text-[10px] text-[var(--text-muted)]">
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--accent-ring)] bg-[var(--accent-muted)] text-[var(--accent)]">
+                <Blocks className="h-3.5 w-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.8125rem] leading-snug font-semibold text-[var(--text-primary)]">
+                  {ext.name}
+                </p>
+                <div className="mt-0.5 flex flex-wrap items-center justify-between gap-1">
+                  <span className="truncate text-[0.6875rem] text-[var(--text-muted)]">
                     {ext.publisher} · v{ext.version}
-                  </p>
+                  </span>
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 text-[0.6875rem] text-[var(--text-secondary)]">
+                    <Check className="h-2.5 w-2.5 text-[var(--status-ok)]" />
+                    <span>{ext.badge}</span>
+                  </span>
                 </div>
               </div>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">
-                <Check className="h-2.5 w-2.5 text-[var(--status-ok)]" />
-                <span>{ext.badge}</span>
-              </span>
             </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
               {ext.description}
             </p>
           </div>

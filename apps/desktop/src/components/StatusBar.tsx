@@ -49,7 +49,7 @@ export function StatusBar({
     <footer
       data-testid="statusbar"
       data-backend={compilerBackend}
-      className="flex h-[var(--statusbar-height)] shrink-0 items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 text-[11px] text-[var(--text-secondary)] select-none"
+      className="flex h-[var(--statusbar-height)] shrink-0 items-center justify-between gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-rail)] px-3 text-xs text-[var(--text-secondary)] select-none"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="inline-flex shrink-0 items-center gap-1.5 font-medium text-[var(--text-primary)]">
@@ -105,7 +105,7 @@ export function StatusBar({
       <div className="flex shrink-0 items-center gap-3.5">
         {activeTab && (
           <>
-            <span className="font-[family-name:var(--font-sans)] text-[11px]">
+            <span className="font-[family-name:var(--font-sans)] text-xs">
               Ln {activeTab.cursor.line}, Col {activeTab.cursor.col}
             </span>
             {!isNarrow && (
@@ -115,7 +115,7 @@ export function StatusBar({
                 <span>{activeTab.lineEnding.toUpperCase()}</span>
                 <span>{languageLabelFor(activeTab.relativePath)}</span>
                 {activeTab.isLargeFile && (
-                  <span className="rounded bg-[var(--accent-muted)] px-1.5 text-[10px] font-medium text-[var(--accent)]">
+                  <span className="rounded bg-[var(--accent-muted)] px-1.5 text-[0.6875rem] font-medium text-[var(--accent)]">
                     Large file mode
                   </span>
                 )}
@@ -131,10 +131,10 @@ export function StatusBar({
           title="Settings"
           className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
         >
-          <Settings className="h-3 w-3" />
+          <Settings className="h-3.5 w-3.5" />
         </button>
 
-        <span className="font-[family-name:var(--font-sans)] text-[11px] text-[var(--text-secondary)]">
+        <span className="font-[family-name:var(--font-sans)] text-xs text-[var(--text-secondary)]">
           {ANAR_VERSION_LABEL}
         </span>
 

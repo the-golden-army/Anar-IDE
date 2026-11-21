@@ -52,13 +52,13 @@ export const LAYOUT_LIMITS = {
 
 export const DEFAULT_LAYOUT: LayoutState = {
   sidebarOpen: true,
-  sidebarWidth: 235,
+  sidebarWidth: 256,
   activeSidebarTab: 'explorer',
   bottomPanelOpen: true,
-  bottomPanelHeight: 224,
+  bottomPanelHeight: 240,
   activeBottomTab: 'terminal',
   inspectorOpen: false,
-  inspectorWidth: 295,
+  inspectorWidth: 300,
   zoomPercent: LAYOUT_LIMITS.defaultZoomPercent,
 };
 

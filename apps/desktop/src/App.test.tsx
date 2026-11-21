@@ -1013,18 +1013,20 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%');
-    expect(document.documentElement.style.fontSize).toBe('16px');
-    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('13px');
+    expect(document.documentElement.style.fontSize).toBe('18px');
+    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('15px');
+    expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('15px');
 
     fireEvent.keyDown(window, { key: '=', ctrlKey: true });
     expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('110%');
-    expect(document.documentElement.style.fontSize).toBe('17.6px');
-    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('14.3px');
+    expect(document.documentElement.style.fontSize).toBe('19.8px');
+    expect(document.documentElement.style.getPropertyValue('--editor-font-size')).toBe('16.5px');
+    expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('16.5px');
 
     fireEvent.keyDown(window, { key: '-', ctrlKey: true });
     fireEvent.keyDown(window, { key: '-', ctrlKey: true });
     expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('90%');
-    expect(document.documentElement.style.fontSize).toBe('14.4px');
+    expect(document.documentElement.style.fontSize).toBe('16.2px');
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(PREFS_STORAGE_KEY) ?? '{}');
@@ -1033,7 +1035,7 @@ describe('Anar App Shell, Themes & Phase 3 Editor', () => {
 
     fireEvent.keyDown(window, { key: '0', ctrlKey: true });
     expect(screen.getByRole('button', { name: 'Reset zoom' })).toHaveTextContent('100%');
-    expect(document.documentElement.style.fontSize).toBe('16px');
+    expect(document.documentElement.style.fontSize).toBe('18px');
   });
 
   it('toggles fullscreen via F11 shortcut and window maximize button', async () => {

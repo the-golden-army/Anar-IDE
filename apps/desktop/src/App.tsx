@@ -1510,6 +1510,7 @@ export function App() {
               activeTab={bottomView}
               workspaceKey={workspace?.rootPath ?? null}
               resolvedTheme={resolvedTheme}
+              zoomPercent={layout.zoomPercent}
               outputLines={outputLines}
               diagnostics={diagnostics}
               isRunning={isRunning}
