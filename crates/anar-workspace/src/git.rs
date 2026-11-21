@@ -42,9 +42,8 @@ pub struct GitDiffResult {
 fn validate_rel_path(scope: &WorkspaceScope, rel_path: &str) -> Result<String> {
     let trimmed = rel_path.trim();
     if trimmed.is_empty() {
-        return Err(WorkspaceError::InvalidPath(String::from(
-            "relative path cannot be empty",
-        )));
+        let msg = String::from("relative path cannot be empty");
+        return Err(WorkspaceError::Io(msg));
     }
     let path = Path::new(trimmed);
     if path.is_absolute() || !is_lexically_within(scope.root(), path) {
@@ -217,14 +216,12 @@ pub fn git_diff(scope: &WorkspaceScope, rel_path: &str, staged: bool) -> Result<
         .args(&args)
         .current_dir(scope.root())
         .output()
-        .map_err(|e| WorkspaceError::InvalidPath(format!("failed to invoke git diff: {e}")))?;
+        .map_err(|e| WorkspaceError::Io(format!("failed to invoke git diff: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(WorkspaceError::InvalidPath(format!(
-            "git diff failed: {}",
-            stderr.trim()
-        )));
+        let msg = format!("git diff failed: {}", stderr.trim());
+        return Err(WorkspaceError::Io(msg));
     }
 
     let mut diff = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -262,14 +259,12 @@ pub fn git_stage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitStatu
         .args(["add", "--", &clean])
         .current_dir(scope.root())
         .output()
-        .map_err(|e| WorkspaceError::InvalidPath(format!("failed to invoke git add: {e}")))?;
+        .map_err(|e| WorkspaceError::Io(format!("failed to invoke git add: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(WorkspaceError::InvalidPath(format!(
-            "git add failed: {}",
-            stderr.trim()
-        )));
+        let msg = format!("git add failed: {}", stderr.trim());
+        return Err(WorkspaceError::Io(msg));
     }
     Ok(git_status(scope))
 }
@@ -281,7 +276,7 @@ pub fn git_unstage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitSta
         .args(["reset", "HEAD", "--", &clean])
         .current_dir(scope.root())
         .output()
-        .map_err(|e| WorkspaceError::InvalidPath(format!("failed to invoke git reset: {e}")))?;
+        .map_err(|e| WorkspaceError::Io(format!("failed to invoke git reset: {e}")))?;
 
     if !output.status.success() {
         // Fallback for unborn HEAD repositories (`git rm --cached`).
@@ -289,13 +284,11 @@ pub fn git_unstage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitSta
             .args(["rm", "--cached", "--", &clean])
             .current_dir(scope.root())
             .output()
-            .map_err(|e| WorkspaceError::InvalidPath(format!("git unstage failed: {e}")))?;
+            .map_err(|e| WorkspaceError::Io(format!("git unstage failed: {e}")))?;
         if !fallback.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(WorkspaceError::InvalidPath(format!(
-                "git unstage failed: {}",
-                stderr.trim()
-            )));
+            let msg = format!("git unstage failed: {}", stderr.trim());
+            return Err(WorkspaceError::Io(msg));
         }
     }
     Ok(git_status(scope))

@@ -76,8 +76,8 @@ jobs:
         run: |
           if ! cargo fmt --all -- --check; then
             if [ "${{ runner.os }}" = "Linux" ]; then
-              DIFF=$(cargo fmt --all -- --check 2>&1 | sed ':a;N;$!ba;s/\n/ | /g')
-              for i in 0 1000 2000 3000 4000; do
+              DIFF=$(cargo fmt --all -- --check 2>&1 | head -n 60 | sed ':a;N;$!ba;s/\n/ | /g')
+              for i in 0 1000 2000; do
                 CHUNK="${DIFF:$i:1000}"
                 if [ -n "$CHUNK" ]; then
                   echo "::warning::$CHUNK"
@@ -95,8 +95,8 @@ jobs:
           if ! OUT=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1); then
             echo "$OUT"
             if [ "${{ runner.os }}" = "Linux" ]; then
-              FLAT=$(printf '%s' "$OUT" | sed ':a;N;$!ba;s/\n/ | /g')
-              for i in 0 1000 2000 3000 4000; do
+              FLAT=$(printf '%s' "$OUT" | tail -n 50 | sed ':a;N;$!ba;s/\n/ | /g')
+              for i in 0 1000 2000; do
                 CHUNK="${FLAT:$i:1000}"
                 if [ -n "$CHUNK" ]; then
                   echo "::warning::$CHUNK"
