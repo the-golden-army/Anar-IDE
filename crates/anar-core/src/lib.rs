@@ -86,6 +86,20 @@ impl ProjectDescriptor {
     }
 }
 
+/// Configures a [`std::process::Command`] to run without creating a visible console
+/// window on Windows (`CREATE_NO_WINDOW`).
+pub fn configure_background_command(
+    cmd: &mut std::process::Command,
+) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

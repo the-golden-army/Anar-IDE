@@ -388,6 +388,7 @@ fn toggle_window_fullscreen(window: tauri::WebviewWindow) -> Result<bool, String
 fn start_cargo_run(
     action: RunnerAction,
     backend: Option<CompilerBackend>,
+    active_file: Option<String>,
     on_event: tauri::ipc::Channel<RunnerEvent>,
     ws_state: tauri::State<'_, WorkspaceState>,
     prefs_state: tauri::State<'_, PreferencesState>,
@@ -398,11 +399,15 @@ fn start_cargo_run(
         Some(b) => b,
         None => prefs_state.current()?.compiler_backend,
     };
-    runner_state
-        .0
-        .start_run_with_backend(scope.root(), action, active_backend, move |evt| {
+    runner_state.0.start_run_with_backend_and_file(
+        scope.root(),
+        action,
+        active_backend,
+        active_file.as_deref(),
+        move |evt| {
             let _ = on_event.send(evt);
-        })
+        },
+    )
 }
 
 #[tauri::command]

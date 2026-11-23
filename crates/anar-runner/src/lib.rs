@@ -9,7 +9,9 @@ pub mod process;
 pub mod pty;
 pub mod rusturbo;
 
-pub use diagnostics::{normalize_diagnostic_path, parse_cargo_stdout_line, ParsedCargoLine};
+pub use diagnostics::{
+    normalize_diagnostic_path, parse_cargo_stdout_line, parse_rustc_stderr_line, ParsedCargoLine,
+};
 pub use process::RunnerManager;
 pub use pty::{default_shell, PtyEvent, PtyManager};
 pub use rusturbo::{

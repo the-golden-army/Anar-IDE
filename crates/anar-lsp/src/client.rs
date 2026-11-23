@@ -201,6 +201,7 @@ impl LspManager {
         self.emit_status(&status_cb, LspStatus::Starting, None);
 
         let mut command = Command::new(&binary);
+        anar_core::configure_background_command(&mut command);
         command.current_dir(workspace_root);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
@@ -786,7 +787,9 @@ pub fn find_rust_analyzer() -> Option<PathBuf> {
         }
     }
 
-    if let Ok(output) = Command::new("rust-analyzer").arg("--version").output() {
+    let mut probe_cmd = Command::new("rust-analyzer");
+    anar_core::configure_background_command(&mut probe_cmd);
+    if let Ok(output) = probe_cmd.arg("--version").output() {
         if output.status.success() {
             return Some(PathBuf::from("rust-analyzer"));
         }

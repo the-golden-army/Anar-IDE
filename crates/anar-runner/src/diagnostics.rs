@@ -89,6 +89,27 @@ pub fn parse_cargo_stdout_line(workspace_root: Option<&Path>, line: &str) -> Par
         return ParsedCargoLine::Metadata;
     };
 
+    ParsedCargoLine::Diagnostic(compiler_message_to_diagnostic(workspace_root, msg))
+}
+
+/// Parses one line of `rustc --error-format=json` stderr.
+pub fn parse_rustc_stderr_line(workspace_root: Option<&Path>, line: &str) -> ParsedCargoLine {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('{') {
+        return ParsedCargoLine::PlainStdout(line.to_string());
+    }
+
+    let Ok(msg) = serde_json::from_str::<CargoCompilerMessage>(trimmed) else {
+        return ParsedCargoLine::PlainStdout(line.to_string());
+    };
+
+    ParsedCargoLine::Diagnostic(compiler_message_to_diagnostic(workspace_root, msg))
+}
+
+fn compiler_message_to_diagnostic(
+    workspace_root: Option<&Path>,
+    msg: CargoCompilerMessage,
+) -> DiagnosticItem {
     let spans: Vec<DiagnosticSpan> = msg
         .spans
         .into_iter()
@@ -109,15 +130,14 @@ pub fn parse_cargo_stdout_line(workspace_root: Option<&Path>, line: &str) -> Par
         .cloned()
         .or_else(|| spans.first().cloned());
 
-    let item = DiagnosticItem {
+    DiagnosticItem {
         severity: map_severity(&msg.level),
         code: msg.code.map(|c| c.code),
         message: msg.message,
         rendered: msg.rendered,
         primary_span,
         spans,
-    };
-    ParsedCargoLine::Diagnostic(item)
+    }
 }
 
 #[cfg(test)]
@@ -163,5 +183,21 @@ mod tests {
             parse_cargo_stdout_line(None, artifact),
             ParsedCargoLine::Metadata
         );
+    }
+
+    #[test]
+    fn parses_rustc_json_stderr_diagnostic() {
+        let json = r#"{"rendered":"error[E0425]: cannot find value `x`\n","children":[],"code":{"code":"E0425","explanation":null},"level":"error","message":"cannot find value `x`","spans":[{"column_end":6,"column_start":5,"file_name":"src/app.rs","is_primary":true,"label":"not found in this scope","line_end":2,"line_start":2}]}"#;
+        match parse_rustc_stderr_line(None, json) {
+            ParsedCargoLine::Diagnostic(diag) => {
+                assert_eq!(diag.severity, DiagnosticSeverity::Error);
+                assert_eq!(diag.code.as_deref(), Some("E0425"));
+                assert_eq!(diag.message, "cannot find value `x`");
+                let primary = diag.primary_span.expect("primary span");
+                assert_eq!(primary.file_name, "src/app.rs");
+                assert_eq!(primary.line_start, 2);
+            }
+            other => panic!("expected diagnostic, got {other:?}"),
+        }
     }
 }

@@ -54,7 +54,9 @@ fn validate_rel_path(scope: &WorkspaceScope, rel_path: &str) -> Result<String> {
 
 /// Queries `git status --porcelain=v1 -b -uall` inside `scope`.
 pub fn git_status(scope: &WorkspaceScope) -> GitStatusReport {
-    let output = match Command::new("git")
+    let mut cmd = Command::new("git");
+    anar_core::configure_background_command(&mut cmd);
+    let output = match cmd
         .args(["status", "--porcelain=v1", "-b", "-uall"])
         .current_dir(scope.root())
         .output()
@@ -212,7 +214,9 @@ pub fn git_diff(scope: &WorkspaceScope, rel_path: &str, staged: bool) -> Result<
     args.push("--");
     args.push(&clean);
 
-    let output = Command::new("git")
+    let mut cmd = Command::new("git");
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd
         .args(&args)
         .current_dir(scope.root())
         .output()
@@ -255,7 +259,9 @@ pub fn git_diff(scope: &WorkspaceScope, rel_path: &str, staged: bool) -> Result<
 /// Stages a single file inside the workspace via `git add -- <rel_path>`.
 pub fn git_stage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitStatusReport> {
     let clean = validate_rel_path(scope, rel_path)?;
-    let output = Command::new("git")
+    let mut cmd = Command::new("git");
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd
         .args(["add", "--", &clean])
         .current_dir(scope.root())
         .output()
@@ -272,7 +278,9 @@ pub fn git_stage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitStatu
 /// Unstages a single file inside the workspace via `git reset HEAD -- <rel_path>`.
 pub fn git_unstage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitStatusReport> {
     let clean = validate_rel_path(scope, rel_path)?;
-    let output = Command::new("git")
+    let mut cmd = Command::new("git");
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd
         .args(["reset", "HEAD", "--", &clean])
         .current_dir(scope.root())
         .output()
@@ -280,7 +288,9 @@ pub fn git_unstage_file(scope: &WorkspaceScope, rel_path: &str) -> Result<GitSta
 
     if !output.status.success() {
         // Fallback for unborn HEAD repositories (`git rm --cached`).
-        let fallback = Command::new("git")
+        let mut fallback_cmd = Command::new("git");
+        anar_core::configure_background_command(&mut fallback_cmd);
+        let fallback = fallback_cmd
             .args(["rm", "--cached", "--", &clean])
             .current_dir(scope.root())
             .output()
