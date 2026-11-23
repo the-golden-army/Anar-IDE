@@ -372,7 +372,14 @@ impl RunnerManager {
                             let emit_err = Arc::clone(&emit);
                             let root_clone = root_buf.clone();
                             thread::spawn(move || {
-                                read_stderr_stream(err, run_id, &root_clone, false, false, &*emit_err);
+                                read_stderr_stream(
+                                    err,
+                                    run_id,
+                                    &root_clone,
+                                    false,
+                                    false,
+                                    &*emit_err,
+                                );
                             })
                         });
                         if let Some(h) = out_h {
