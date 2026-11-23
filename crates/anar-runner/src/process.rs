@@ -1,7 +1,7 @@
 use crate::diagnostics::{parse_cargo_stdout_line, parse_rustc_stderr_line, ParsedCargoLine};
 use crate::rusturbo::{find_rusturbo_binary, rusturbo_args_for, StderrDiagnosticParser};
 use crate::{cargo_args_for, executable_for, OutputStream, RunnerAction, RunnerEvent};
-use anar_core::{configure_background_command, CompilerBackend, DiagnosticItem};
+use anar_core::{CompilerBackend, configure_background_command, DiagnosticItem};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
