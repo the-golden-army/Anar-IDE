@@ -198,15 +198,15 @@ impl RunnerManager {
                 (out, None)
             }
             RunnerAction::Check => {
-                let tmp_dir = std::env::temp_dir()
-                    .join(format!("anar-rustc-{}-{nonce}", std::process::id()));
+                let tag = format!("anar-rustc-{}-{nonce}", std::process::id());
+                let tmp_dir = std::env::temp_dir().join(tag);
                 fs::create_dir_all(&tmp_dir)
                     .map_err(|e| format!("failed to prepare rustc temp dir: {e}"))?;
                 (tmp_dir.join(format!("lib{stem}.rmeta")), Some(tmp_dir))
             }
             RunnerAction::Run | RunnerAction::Test => {
-                let tmp_dir = std::env::temp_dir()
-                    .join(format!("anar-rustc-{}-{nonce}", std::process::id()));
+                let tag = format!("anar-rustc-{}-{nonce}", std::process::id());
+                let tmp_dir = std::env::temp_dir().join(tag);
                 fs::create_dir_all(&tmp_dir)
                     .map_err(|e| format!("failed to prepare rustc temp dir: {e}"))?;
                 (tmp_dir.join(format!("{stem}{exe_suffix}")), Some(tmp_dir))
@@ -372,14 +372,7 @@ impl RunnerManager {
                             let emit_err = Arc::clone(&emit);
                             let root_clone = root_buf.clone();
                             thread::spawn(move || {
-                                read_stderr_stream(
-                                    err,
-                                    run_id,
-                                    &root_clone,
-                                    false,
-                                    false,
-                                    &*emit_err,
-                                );
+                                read_stderr_stream(err, run_id, &root_clone, false, false, &*emit_err);
                             })
                         });
                         if let Some(h) = out_h {
@@ -935,9 +928,7 @@ mod tests {
         }
 
         let captured = events.lock().unwrap().clone();
-        assert!(captured
-            .iter()
-            .any(|e| matches!(e, RunnerEvent::Diagnostic { .. })));
+        assert!(captured.iter().any(|e| matches!(e, RunnerEvent::Diagnostic { .. })));
         assert!(captured.iter().any(|e| matches!(
             e,
             RunnerEvent::Finished {

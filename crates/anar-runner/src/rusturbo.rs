@@ -124,11 +124,7 @@ pub fn probe_rusturbo_status(workspace_root: Option<&Path>) -> RusturboStatus {
 fn read_rusturbo_version(binary: &Path) -> Option<String> {
     let mut cmd = Command::new(binary);
     anar_core::configure_background_command(&mut cmd);
-    let output = cmd
-        .arg("--version")
-        .env("NO_COLOR", "1")
-        .output()
-        .ok()?;
+    let output = cmd.arg("--version").env("NO_COLOR", "1").output().ok()?;
     if !output.status.success() {
         return None;
     }
