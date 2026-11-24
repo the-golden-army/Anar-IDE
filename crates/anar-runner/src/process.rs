@@ -1,7 +1,7 @@
 use crate::diagnostics::{parse_cargo_stdout_line, parse_rustc_stderr_line, ParsedCargoLine};
 use crate::rusturbo::{find_rusturbo_binary, rusturbo_args_for, StderrDiagnosticParser};
 use crate::{cargo_args_for, executable_for, OutputStream, RunnerAction, RunnerEvent};
-use anar_core::{CompilerBackend, configure_background_command, DiagnosticItem};
+use anar_core::{configure_background_command, CompilerBackend, DiagnosticItem};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -902,7 +902,8 @@ mod tests {
         let dir_name = format!("anar-rustc-chk-{}-{nanos}", std::process::id());
         let dir = std::env::temp_dir().join(dir_name);
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("broken.rs"), "fn main() { let x: i32 = \"oops\"; }\n").unwrap();
+        let broken_file = dir.join("broken.rs");
+        fs::write(&broken_file, "fn main() { let x: i32 = \"oops\"; }\n").unwrap();
 
         let manager = Arc::new(RunnerManager::new());
         let events = Arc::new(Mutex::new(Vec::<RunnerEvent>::new()));
