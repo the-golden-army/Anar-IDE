@@ -787,7 +787,7 @@ export function App() {
   const handleRunAction = useCallback(
     async (action: RunnerAction) => {
       if (!workspaceRef.current) {
-        setErrorBanner('Open a Cargo workspace before running.');
+        setErrorBanner('Open a folder or Cargo workspace before running.');
         return;
       }
 
@@ -840,6 +840,7 @@ export function App() {
             }
           },
           backend,
+          activeTabPath ?? undefined,
         );
         activeRunIdRef.current = runId;
       } catch (err) {
@@ -848,7 +849,14 @@ export function App() {
         setErrorBanner(formatError(err));
       }
     },
-    [appendOutput, handleSaveTab, preferences.compilerBackend, showTransientStatus, updateLayout],
+    [
+      activeTabPath,
+      appendOutput,
+      handleSaveTab,
+      preferences.compilerBackend,
+      showTransientStatus,
+      updateLayout,
+    ],
   );
 
   const handleRunProfile = useCallback(

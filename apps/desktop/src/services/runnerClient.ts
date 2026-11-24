@@ -7,13 +7,19 @@ export async function startCargoRun(
   action: RunnerAction,
   onEvent: (event: RunnerEvent) => void,
   backend?: CompilerBackend,
+  activeFile?: string,
 ): Promise<number> {
   if (!isTauriRuntime()) {
     throw new Error('Cargo build/run requires the Tauri desktop runtime (`npm run tauri dev`).');
   }
   const channel = new Channel<RunnerEvent>();
   channel.onmessage = onEvent;
-  return invoke<number>('start_cargo_run', { action, backend: backend ?? null, onEvent: channel });
+  return invoke<number>('start_cargo_run', {
+    action,
+    backend: backend ?? null,
+    activeFile: activeFile ?? null,
+    onEvent: channel,
+  });
 }
 
 export async function stopCargoRun(): Promise<boolean> {

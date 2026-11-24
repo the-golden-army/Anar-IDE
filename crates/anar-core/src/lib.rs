@@ -7,6 +7,7 @@ pub mod preferences;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::process::Command;
 
 /// Compiler backend used to build and run Rust projects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -84,6 +85,17 @@ impl ProjectDescriptor {
             backend: CompilerBackend::default(),
         }
     }
+}
+
+/// Configures a [`Command`] to run without creating a visible console window on Windows.
+pub fn configure_background_command(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
 }
 
 #[cfg(test)]

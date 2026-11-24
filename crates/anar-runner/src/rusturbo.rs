@@ -122,11 +122,9 @@ pub fn probe_rusturbo_status(workspace_root: Option<&Path>) -> RusturboStatus {
 }
 
 fn read_rusturbo_version(binary: &Path) -> Option<String> {
-    let output = Command::new(binary)
-        .arg("--version")
-        .env("NO_COLOR", "1")
-        .output()
-        .ok()?;
+    let mut cmd = Command::new(binary);
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd.arg("--version").env("NO_COLOR", "1").output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -147,7 +145,9 @@ pub fn analyze_workspace_with_rusturbo(workspace_root: &Path) -> Result<Rusturbo
         )
     })?;
 
-    let output = Command::new(&binary)
+    let mut cmd = Command::new(&binary);
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd
         .arg("--manifest-dir")
         .arg(workspace_root)
         .args(["analyze", "--json"])
@@ -212,7 +212,9 @@ pub fn init_rusturbo_config(
         }
     }
 
-    let output = Command::new(&binary)
+    let mut cmd = Command::new(&binary);
+    anar_core::configure_background_command(&mut cmd);
+    let output = cmd
         .arg("--manifest-dir")
         .arg(workspace_root)
         .args(&args)
