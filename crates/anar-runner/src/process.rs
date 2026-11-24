@@ -1,7 +1,7 @@
 use crate::diagnostics::{parse_cargo_stdout_line, parse_rustc_stderr_line, ParsedCargoLine};
 use crate::rusturbo::{find_rusturbo_binary, rusturbo_args_for, StderrDiagnosticParser};
 use crate::{cargo_args_for, executable_for, OutputStream, RunnerAction, RunnerEvent};
-use anar_core::{configure_background_command, CompilerBackend, DiagnosticItem};
+use anar_core::{CompilerBackend, DiagnosticItem};
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -230,7 +230,7 @@ impl RunnerManager {
         let _ = self.stop();
 
         let mut compile_cmd = Command::new("rustc");
-        configure_background_command(&mut compile_cmd);
+        anar_core::configure_background_command(&mut compile_cmd);
         compile_cmd
             .args(&rustc_args)
             .current_dir(workspace_root)
@@ -328,7 +328,7 @@ impl RunnerManager {
 
             if should_exec && exit_code == Some(0) && !cancelled.load(Ordering::SeqCst) {
                 let mut exec_cmd = Command::new(&output_artifact);
-                configure_background_command(&mut exec_cmd);
+                anar_core::configure_background_command(&mut exec_cmd);
                 exec_cmd
                     .current_dir(&root_buf)
                     .stdin(Stdio::piped())
@@ -473,7 +473,7 @@ impl RunnerManager {
         let _ = self.stop();
 
         let mut cmd = Command::new(program);
-        configure_background_command(&mut cmd);
+        anar_core::configure_background_command(&mut cmd);
         cmd.args(args)
             .current_dir(working_dir)
             .stdin(Stdio::piped())
@@ -801,7 +801,7 @@ fn terminate_process_tree(pid: u32, child: &Arc<Mutex<Child>>) {
     {
         let pid_str = pid.to_string();
         let mut cmd = Command::new("taskkill");
-        configure_background_command(&mut cmd);
+        anar_core::configure_background_command(&mut cmd);
         let _ = cmd
             .args(["/PID", &pid_str, "/T", "/F"])
             .stdout(Stdio::null())
@@ -936,7 +936,13 @@ mod tests {
         }
 
         let captured = events.lock().unwrap().clone();
-        assert!(captured.iter().any(|e| matches!(e, RunnerEvent::Diagnostic { .. })));
+        let mut saw_diag = false;
+        for evt in &captured {
+            if matches!(evt, RunnerEvent::Diagnostic { .. }) {
+                saw_diag = true;
+            }
+        }
+        assert!(saw_diag);
         assert!(captured.iter().any(|e| matches!(
             e,
             RunnerEvent::Finished {
