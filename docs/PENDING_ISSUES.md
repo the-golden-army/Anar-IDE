@@ -1,17 +1,23 @@
-# Phase 1 Issues Status
+# Tracked Issues & Release Notes Status
 
-> **Resolved:** GitHub `issues=write` permission was enabled at the start of Phase 2, and all 12 Phase 1 items below were filed as live GitHub issues (`#3`–`#14`). Phase 2 verification items are filed as `#15`.
+> **Status (`v0.2.0`):** All Phase 1–3 tracked GitHub issues (`#3`–`#15`, `#17`, `#18`) in `the-golden-army/Anar-IDE` have been resolved and closed across Phases 2–8 and PRs `#19`–`#28`.
 
-- `#3` — Rusturbo buffers and discards Cargo stdout, breaking live `--message-format=json` diagnostics
-- `#4` — Rusturbo lacks `check` and `test` subcommands
-- `#5` — Rusturbo `profile.jobs` is computed and persisted but never forwarded to Cargo
-- `#6` — Verify Rusturbo shared-target hard links on Windows NTFS and non-Linux benchmark support
-- `#7` — Verify `rusturbo` binary execution in live environment
-- `#8` — Verify interactive `npm run tauri dev` window launch on Linux, macOS, and Windows
-- `#9` — Generate and commit `Cargo.lock` for reproducible `--locked` CI and release builds
-- `#10` — Cross-platform process-group termination needed to stop spawned servers and infinite loops
-- `#11` — Ensure CodeMirror 6 and LSP sync remain responsive on 5 MB+ Rust files
-- `#12` — Design `rust-analyzer` crash recovery, indexing progress, and memory bounds for large workspaces
-- `#13` — Diverse framework toolchains (`dx`, `trunk`, `cargo-tauri`) require custom run profiles
-- `#14` — Verify Linux WebKitGTK / Wayland rendering and cross-platform PTY compatibility
-- `#15` — Verify Phase 2 theme persistence, OS system-theme sync, and small-window resizing in live Tauri WebView
+## Closed Historical Issues (`#3`–`#18`)
+
+- `#3` — Rusturbo buffers and discards Cargo stdout (`v0.2.0` uses Cargo fallback for `check`/`test` & `rustc` stderr parser)
+- `#4` — Rusturbo lacks `check` and `test` subcommands (handled via Cargo fallback in `anar-runner`)
+- `#5` — Rusturbo `profile.jobs` forwarding (documented in `docs/rusturbo-integration.md`)
+- `#6`, `#7` — Rusturbo live execution & broken wrapper shim detection (`available: binary.is_some() && version.is_some()`)
+- `#8`, `#15`, `#17` — Desktop WebView shell, theme persistence, folder dialog, watcher, and large-file editing verification
+- `#9` — Reproducible `Cargo.lock` note (tracked in `docs/ARCHITECTURE.md`)
+- `#10` — Cross-platform process-tree termination (`process_group` + `kill` on Unix, `taskkill /T /F` on Windows)
+- `#11` — CodeMirror 6 and LSP 1 MiB large-file tuning
+- `#12` — `rust-analyzer` crash recovery, indexing status, and restart controls
+- `#13` — Framework detection (`axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, `clap`) & run profiles
+- `#14` — Cross-platform PTY (`portable-pty` + `@xterm/xterm`) and Windows ConPTY cleanup
+- `#18` — Confirmation prompts before deleting workspace entries or discarding dirty tabs
+
+## Remaining Operational Notes
+
+- **Prebuilt binary releases:** GitHub Releases currently provide source tags (`v0.0.1` through `v0.2.0`); desktop binaries (`anar-desktop.exe`, `.dmg`, `.AppImage`) are built via `cd apps/desktop && npm run tauri build`.
+- **`Cargo.lock`:** Not committed in the repository (`cargo build` / `cargo test` resolves dependencies cleanly from `Cargo.toml`).

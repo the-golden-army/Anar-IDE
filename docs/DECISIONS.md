@@ -65,7 +65,25 @@ This log records key decisions made when resolving ambiguities or environment co
 
 - **Context:** Phase 3 needs folder selection and filesystem CRUD while preserving ADR-002's minimal webview capabilities (`core:default`).
 - **Decision:** Invoke `tauri-plugin-dialog` (`app.dialog().file().blocking_pick_folder()`) inside the Rust `pick_workspace_folder` command rather than granting broad frontend `@tauri-apps/plugin-dialog` or `@tauri-apps/plugin-fs` capabilities. All subsequent reads, writes, renames, deletes, and `notify` watches are canonicalized and confined to the active `WorkspaceScope`.
-- **Consequences:** `capabilities/default.json` remains minimal (`core:default`), and path traversal or symlink escape from the webview is rejected in Rust.
+- **Consequences:** `capabilities/default.json` remains minimal (`core:default`, `dialog:default`), and path traversal or symlink escape from the webview is rejected in Rust.
+
+## ADR-011: Windows `CREATE_NO_WINDOW` Flag on All Background Subprocesses
+
+- **Context:** On Windows, `anar-desktop.exe` compiles with `windows_subsystem = "windows"` and has no parent console. Spawning background CLI tools (`git`, `rust-analyzer`, `cargo`, `rusturbo`, `rustc`, `taskkill`) with default `std::process::Command` flags caused Windows to flash visible `cmd` console windows open and closed during normal IDE interactions.
+- **Decision:** Centralize `anar_core::configure_background_command(&mut Command)` in `crates/anar-core`, applying `.creation_flags(0x0800_0000)` (`CREATE_NO_WINDOW`) on `#[cfg(windows)]` targets, and call it before spawning every non-PTY background process across `anar-lsp`, `anar-runner`, and `anar-workspace`.
+- **Consequences:** Eliminates Windows console flashes across Git polling, LSP startup/probing, runner actions, and process cancellation while keeping interactive PTY sessions in `portable-pty` unaffected.
+
+## ADR-012: Standalone `.rs` Fallback via `rustc` When `Cargo.toml` Is Absent
+
+- **Context:** Users frequently open single-file Rust folders (e.g., `src/app.rs` or `main.rs`) without initializing a Cargo package. Unconditionally running `cargo run --message-format=json` failed with `could not find 'Cargo.toml'`.
+- **Decision:** Search ancestor directories from the active editor file up to `workspace_root` for `Cargo.toml`. When none exists, `RunnerManager::start_rustc_run` resolves the active `.rs` file (or standard entrypoints `main.rs`, `src/main.rs`, `app.rs`, `src/app.rs`) and runs `rustc --error-format=json` directly (`--emit=metadata` for Check, `<stem>{EXE_SUFFIX}` for Build, temp binary execution with live `stdin`/Stop for Run and `--test` for Test), parsing `rustc` JSON stderr diagnostics with `parse_rustc_stderr_line`.
+- **Consequences:** Both Cargo workspaces and standalone `.rs` scratch folders work seamlessly with Run, Build, Check, Test, and clickable Problems diagnostics.
+
+## ADR-013: Cross-Platform PTY Terminal & Scoped Git/Search Helpers
+
+- **Context:** Phase 8 requires an integrated terminal alongside workspace search and Git source control without weakening ADR-002's security model.
+- **Decision:** Back the interactive terminal in `anar-runner::pty` with `portable-pty` (`PtyManager`, dropping Windows ConPTY master handles cleanly after child exit before joining reader threads) paired with `@xterm/xterm` + `@xterm/addon-fit` (`TerminalView`), and implement `search_workspace`, `find_workspace_files`, `git_status`, `git_diff`, `git_stage_file`, and `git_unstage_file` inside `anar-workspace` confined to `WorkspaceScope`.
+- **Consequences:** Terminal sessions run only when the Terminal tab is active, and all search and Git operations stay strictly scoped to the opened workspace root.
 
 
 
