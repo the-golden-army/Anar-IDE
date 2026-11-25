@@ -1,15 +1,15 @@
 # Anar Architecture
 
-> **Phase 2 Status:** `v0.1.0-alpha.1` implements the Phase 2 app shell, semantic design tokens, `dark`/`light`/`system` themes, responsive panel layout, and Rust-backed preferences persistence (`anar-core::preferences` + Tauri commands). Items marked as planned for Phases 3–9 remain unimplemented.
+> **Current Status (`v0.2.0`):** Phases 1–8, the `v2.3.0` UI redesign, Windows `CREATE_NO_WINDOW` console suppression, and standalone `.rs` (`rustc`) execution fallback are implemented and verified across `ubuntu-latest`, `macos-latest`, and `windows-latest` CI runners.
 
 ---
 
 ## 1. Design Principles
 
-1. **Thin React frontend, Rust-first core:** Business logic, process supervision, LSP framing, file watching, search, and framework detection live in pure-Rust workspace crates with unit/integration tests. The React + TypeScript frontend handles layout, CodeMirror 6 rendering, xterm.js display, and user interaction.
+1. **Thin React frontend, Rust-first core:** Business logic, process supervision, LSP framing, file watching, search, Git queries, and framework detection live in pure-Rust workspace crates with unit/integration tests. The React + TypeScript frontend handles layout, CodeMirror 6 rendering, xterm.js display, and user interaction.
 2. **Tauri-free domain crates:** Only `apps/desktop/src-tauri` depends on `tauri`. All five library crates under `crates/` compile and test standalone without a WebView or GUI runtime.
-3. **Cross-platform by construction:** No hardcoded POSIX paths or shell invocations (`/bin/sh`, `cmd.exe`). All external commands (`cargo`, `rusturbo`, `rust-analyzer`, `git`) use explicit argv vectors (`std::process::Command` / `tokio::process::Command`).
-4. **Least-privilege security:** Scoped workspace filesystem access, minimal Tauri 2 capabilities, and zero unrestricted shell execution from the webview.
+3. **Cross-platform by construction:** No hardcoded POSIX paths or shell invocations (`/bin/sh`, `cmd.exe`). All external commands (`cargo`, `rusturbo`, `rustc`, `rust-analyzer`, `git`) use explicit argv vectors (`std::process::Command`) configured via `anar_core::configure_background_command` (`CREATE_NO_WINDOW` on Windows).
+4. **Least-privilege security:** Scoped workspace filesystem access, minimal Tauri 2 capabilities (`core:default` + `dialog:default`), and zero unrestricted shell execution from the webview.
 
 ---
 
@@ -17,30 +17,30 @@
 
 ```text
 anar/
-├─ Cargo.toml                 # [workspace] (resolver = "2")
+├─ Cargo.toml                 # [workspace] (resolver = "2", v0.2.0)
 ├─ crates/
-│  ├─ anar-core/              # Shared domain model, types, errors, config (no Tauri deps)
+│  ├─ anar-core/              # Shared domain model, preferences, diagnostics, Windows process flags (no Tauri deps)
 │  ├─ anar-lsp/               # rust-analyzer lifecycle + JSON-RPC 2.0 stdio bridge
-│  ├─ anar-runner/            # Build/Run/Check/Test pipeline (Cargo + Rusturbo)
+│  ├─ anar-runner/            # Build/Run/Check/Test pipeline (Cargo + Rusturbo + standalone rustc) & PTY manager
 │  ├─ anar-workspace/         # Scoped FS, watcher, search, git operations
 │  └─ anar-frameworks/        # Framework detection, templates, run profiles
 ├─ apps/
-│  └─ desktop/                # Vite + React + TypeScript + Tailwind + Tauri 2 shell
-│     ├─ src/                 # Frontend UI (CodeMirror 6, xterm.js added in later phases)
+│  └─ desktop/                # Vite + React + TypeScript + Tailwind v4 + Tauri 2 shell
+│     ├─ src/                 # Frontend UI (CodeMirror 6, xterm.js)
 │     └─ src-tauri/           # Tauri binary crate (anar-desktop): IPC, state, capabilities
 └─ docs/
 ```
 
 ### Crate Responsibilities
 
-| Crate | Planned Responsibilities | Key Dependencies (Planned) |
+| Crate | Responsibilities | Key Dependencies |
 |---|---|---|
-| `anar-core` | Project/workspace metadata types, persistent theme & layout preferences (`preferences` module), diagnostic model (`Diagnostic`, `Span`, `Severity`), compiler backend enum (`Cargo`, `Rusturbo`), typed error definitions. **Must never depend on `tauri`.** | `serde`, `serde_json` |
-| `anar-workspace` | Canonical path containment (preventing path traversal outside opened workspace), atomic file reads/writes, external file change watcher, ripgrep-style text/fuzzy search, Git status/diff queries. | `anar-core`, `notify`, `ignore` (later phases) |
-| `anar-frameworks` | `Cargo.toml` / `Cargo.lock` inspection to detect `axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, `clap`; project scaffolding templates; framework-specific run profiles (e.g., `dx serve`, `trunk serve`, server ports, health/ready hints). | `anar-core`, `toml` (later phases) |
-| `anar-runner` | Subprocess build/run/check/test/stop pipeline for both `cargo` and `rusturbo`; line-buffered stdout/stderr streaming; Cargo JSON diagnostic parser (`--message-format=json`); process-tree termination for long-running servers or infinite loops. | `anar-core`, `tokio` (later phases) |
-| `anar-lsp` | `rust-analyzer` binary discovery, child-process lifecycle, `Content-Length` JSON-RPC 2.0 framing over stdio (`tokio`), request/response correlation, cancellation, crash detection and bounded restart backoff. | `anar-core`, `tokio`, `lsp-types` (later phases) |
-| `apps/desktop/src-tauri` | Wires crate services into Tauri `State`, exposes `#[tauri::command]` handlers, bridges streams to Tauri `Channel` / events, configures Tauri 2 capabilities and window management. | `tauri` v2, `anar-*` |
+| `anar-core` | Project/workspace metadata types, persistent theme/layout/recent-workspace/compiler-backend preferences (`preferences` module), diagnostic model (`DiagnosticItem`, `DiagnosticSpan`, `DiagnosticSeverity`), compiler backend enum (`Cargo`, `Rusturbo`), `configure_background_command`, and typed error definitions. **Never depends on `tauri`.** | `serde`, `serde_json` |
+| `anar-workspace` | Canonical path containment (`WorkspaceScope`), directory tree listing, atomic file reads/writes with large-file guard, debounced external `notify` watcher with self-save suppression, workspace text/fuzzy-file search, and Git status/diff/stage/unstage helpers. | `anar-core`, `notify`, `serde` |
+| `anar-frameworks` | `Cargo.toml` / workspace-member / `src-tauri/Cargo.toml` / `Cargo.lock` inspection to detect `axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, and `clap`; 11 built-in project scaffolding templates; framework-specific run profiles. | `anar-core`, `serde`, `serde_json` |
+| `anar-runner` | Subprocess build/run/check/test/stop pipeline for `cargo`, `rusturbo`, and standalone `rustc --error-format=json`; line-buffered stdout/stderr streaming; Cargo & `rustc` JSON diagnostic parsers; process-tree termination (`kill` on Unix, `taskkill /T /F` on Windows); `rusturbo` probing & `analyze --json`; interactive `portable-pty` terminal sessions. | `anar-core`, `portable-pty`, `serde`, `serde_json` |
+| `anar-lsp` | `rust-analyzer` binary discovery, child-process lifecycle, `Content-Length` JSON-RPC 2.0 framing over stdio, request/response correlation, document synchronization (`didOpen`, `didChange`, `didSave`, `didClose`), crash detection and bounded auto-restart with open-document replay. | `anar-core`, `serde`, `serde_json` |
+| `apps/desktop/src-tauri` | Wires crate services into Tauri `State`, exposes `#[tauri::command]` handlers, bridges streams to Tauri `Channel` / events, configures Tauri 2 capabilities and window management. | `tauri` v2, `tauri-plugin-dialog`, `anar-*` |
 
 ---
 
@@ -50,25 +50,25 @@ Anar uses all three Tauri 2 IPC primitives according to data pattern:
 
 ### 3.1 Commands (`invoke`) — Request / Response
 
-Used for discrete user actions that return a typed `Result<T, SerializableError>`:
-- Preferences (Phase 2): `get_preferences`, `set_theme_mode`, `update_layout_state`
-- Workspace: `open_workspace`, `read_file`, `write_file`, `list_tree`, `search_files`, `git_status`
-- LSP: `lsp_completion`, `lsp_hover`, `lsp_goto_definition`, `lsp_references`, `lsp_rename`, `lsp_format`
-- Runner: `start_run`, `stop_run`, `detect_frameworks`, `list_run_profiles`
+Used for discrete user actions that return a typed `Result<T, String>`:
+- Preferences & Window: `get_preferences`, `set_theme_mode`, `update_layout_state`, `set_compiler_backend`, `is_window_fullscreen`, `toggle_window_fullscreen`
+- Workspace & Git & Search: `pick_workspace_folder`, `open_workspace_folder`, `list_workspace_dir`, `read_workspace_file`, `save_workspace_file`, `create_workspace_file`, `create_workspace_dir`, `rename_workspace_entry`, `delete_workspace_entry`, `search_workspace`, `find_workspace_files`, `git_status`, `git_diff`, `git_stage_file`, `git_unstage_file`
+- LSP: `lsp_get_status`, `lsp_restart`, `lsp_did_open`, `lsp_did_change`, `lsp_did_save`, `lsp_did_close`, `lsp_completion`, `lsp_hover`, `lsp_goto_definition`, `lsp_format_document`
+- Runner & Rusturbo: `start_cargo_run`, `stop_cargo_run`, `send_run_stdin`, `get_rusturbo_status`, `analyze_rusturbo`, `init_rusturbo_config`
+- Frameworks & Templates: `detect_workspace_frameworks`, `list_project_templates`, `pick_parent_folder`, `create_project_from_template`, `start_profile_run`
 - Terminal: `pty_spawn`, `pty_write`, `pty_resize`, `pty_kill`
 
 ### 3.2 Channels (`tauri::ipc::Channel<T>`) — Ordered High-Throughput Streams
 
-Used when a specific invocation produces an ordered byte/line stream (avoids global event bus contention and preserves ordering):
-- **Build/Run output stream:** `start_run(..., on_event: Channel<RunnerEvent>)` streams `StdoutLine`, `StderrLine`, `Diagnostic`, `StateChanged`, and `Exited`.
-- **PTY output stream:** `pty_spawn(..., on_data: Channel<Vec<u8>>)` streams raw terminal bytes to `xterm.js`.
-- **Search results stream:** Streams incremental file/text matches for large repositories.
+Used when a specific invocation produces an ordered byte/event stream (avoids global event bus contention and preserves ordering):
+- **Build/Run output stream:** `start_cargo_run(..., on_event)` and `start_profile_run(..., on_event)` stream `Started`, `Output`, `Diagnostic`, and `Finished` (`RunnerEvent`).
+- **PTY output stream:** `pty_spawn(..., on_event)` streams terminal output bytes and exit events to `@xterm/xterm`.
 
 ### 3.3 Events (`app.emit`) — Asynchronous Workspace Broadcasts
 
 Used for unsolicited backend-initiated notifications not tied to a single `invoke`:
 - `lsp://diagnostics` — pushed whenever `rust-analyzer` sends `textDocument/publishDiagnostics`
-- `lsp://status` — `starting | indexing | ready | crashed | restarted`
+- `lsp://status` — `stopped | starting | indexing | ready | unavailable | error`
 - `workspace://fs-changed` — external file modifications from `notify` watcher
 
 ---
@@ -76,27 +76,31 @@ Used for unsolicited backend-initiated notifications not tied to a single `invok
 ## 4. Run Pipeline (`anar-runner` + `anar-frameworks`)
 
 ```text
-[UI Run/Check/Test]
+[UI Run/Build/Check/Test]
         │
         ▼
-[anar-frameworks] ──▶ resolves FrameworkKind + RunProfile (args, env, readiness hint)
+[find_cargo_manifest_dir(workspace_root, active_file)]
+        │
+        ├──▶ Cargo.toml found:
+        │      ├─▶ Cargo backend (or Check/Test fallback):
+        │      │     cargo build|run|check|test --message-format=json
+        │      │     stdout JSON ─▶ DiagnosticItem events
+        │      │     stderr / app output ─▶ live Output stream
+        │      └─▶ Rusturbo backend (see docs/rusturbo-integration.md):
+        │            rusturbo build|run (NO_COLOR=1)
+        │            stderr ─▶ fallback rustc diagnostic parser
+        │
+        └──▶ No Cargo.toml found (standalone .rs folder):
+               resolve active `.rs` file (or main.rs / src/main.rs / app.rs / src/app.rs)
+               rustc --error-format=json
+               ├─▶ Check: rustc --emit=metadata into temp dir
+               ├─▶ Build: rustc -o <workspace>/<stem>{EXE_SUFFIX}
+               └─▶ Run / Test: compile to temp binary (or --test), then execute with live stdin/stop
         │
         ▼
-[anar-runner] ──▶ selects CompilerBackend (Cargo | Rusturbo)
-        │
-        ├──▶ Cargo backend:
-        │      cargo build|run|check|test --message-format=json-diagnostic-rendered-ansi
-        │      stdout = JSON artifacts & diagnostics ─▶ parsed into Diagnostic structs
-        │      stderr = Cargo progress / user binary output ─▶ streamed to console
-        │
-        └──▶ Rusturbo backend (see docs/rusturbo-integration.md):
-               rusturbo build|run [--profile ...] [--cargo-arg ...] [-- <app_args>]
-               note: rusturbo buffers/discards stdout, so structured diagnostics
-                     require fallback or separate `cargo check --message-format=json`
-        │
-        ▼
-[ProcessSupervisor] ──▶ tracks PID / process group (Unix setsid/PGID, Windows Job Object)
-                        enables reliable Stop on servers & infinite loops
+[anar_core::configure_background_command + Process Termination]
+  - Windows: CREATE_NO_WINDOW (0x0800_0000) prevents flashing console windows; Stop uses `taskkill /T /F`
+  - Unix: process_group(0) + SIGTERM/SIGKILL cleanup
 ```
 
 ---
@@ -111,45 +115,38 @@ Used for unsolicited backend-initiated notifications not tied to a single `invok
                                                     │
          ┌──────────────────────────────────────────┴─────────────────────────┐
          ▼                                                                    ▼
-[Writer Task (tokio::mpsc)]                                     [Reader Task (BufReader)]
+[Writer Thread]                                                 [Reader Thread (BufReader)]
   - serializes JSON-RPC 2.0                                       - parses Content-Length headers
-  - writes `Content-Length: N\r\n\r\n<json>`                      - routes responses by `id` via oneshot
+  - writes `Content-Length: N\r\n\r\n<json>`                      - routes responses by `id`
   - feeds `rust-analyzer` stdin                                   - emits notifications (`publishDiagnostics`)
          │                                                                    ▲
          └──────────────────────▶ [rust-analyzer child process] ──────────────┘
 ```
 
 Key lifecycle invariants:
-- `didOpen` / `didChange` / `didClose` / `didSave` keep in-memory editor buffers synchronized with `rust-analyzer` using monotonically increasing document versions.
-- If `rust-analyzer` exits unexpectedly, `LspManager` notifies the frontend (`lsp://status = crashed`), clears pending `oneshot` waiters with a structured error, restarts with bounded exponential backoff, and replays open documents.
+- `didOpen` / `didChange` / `didClose` / `didSave` keep in-memory editor buffers synchronized with `rust-analyzer` using monotonically increasing document versions and a 1 MiB large-file guard.
+- If `rust-analyzer` exits unexpectedly, `LspManager` emits `lsp://status`, fails pending waiters cleanly, restarts with bounded backoff, and replays open documents.
 
 ---
 
 ## 6. Security Model
 
 1. **Minimal Tauri 2 capabilities (`apps/desktop/src-tauri/capabilities/default.json`):**
-   - Phase 1 enables only `core:default` (window/app core permissions). No arbitrary shell plugin (`tauri-plugin-shell`) with broad scopes will ever be enabled for the webview.
+   - Enables only `core:default` and `dialog:default`. Broad webview plugins (`tauri-plugin-shell`, unrestricted `tauri-plugin-fs`) are not enabled.
 2. **Workspace-scoped filesystem access:**
-   - All file read/write commands in `anar-workspace` canonicalize paths and verify `canonical_path.starts_with(&canonical_workspace_root)` before touching disk, blocking symlink and `..` traversal escapes.
+   - All file read/write/create/rename/delete/search commands in `anar-workspace` canonicalize paths and verify `canonical_path.starts_with(&canonical_workspace_root)` before touching disk, blocking symlink and `..` traversal escapes.
 3. **No shell interpolation:**
-   - Subprocesses (`cargo`, `rusturbo`, `rust-analyzer`, `git`, user project binaries) are spawned directly via `Command::new(exe).args(argv)` without invoking `/bin/sh` or `cmd.exe`.
-   - PTY (`portable-pty` in Phase 8) runs an explicit user-configured login shell only inside the sandboxed terminal panel, never accepting hidden command injection from workspace metadata files (`Cargo.toml` / `rusturbo.toml`).
+   - Subprocesses (`cargo`, `rusturbo`, `rustc`, `rust-analyzer`, `git`, user project binaries) are spawned directly via `Command::new(exe).args(argv)` without invoking `/bin/sh` or `cmd.exe`.
+   - PTY (`portable-pty`) runs the user's configured login shell only inside the sandboxed terminal panel, never accepting command strings from workspace metadata files (`Cargo.toml` / `rusturbo.toml`).
 4. **Content Security Policy (CSP):**
-   - Configured in `tauri.conf.json` to disallow remote script execution (`default-src 'self'`).
+   - Configured in `tauri.conf.json` to disallow remote script execution (`default-src 'self'; style-src 'self' 'unsafe-inline'`).
 
 ---
 
-## 7. Foreseen Risks & Unknowns
+## 7. Tracked Risks & Environment Notes
 
-Each risk below is tracked as a GitHub issue in `Nour-yahyaoui/anar`:
+Issues `#3`–`#18` in `the-golden-army/Anar-IDE` were filed and resolved across Phases 2–8 (`docs/PENDING_ISSUES.md`). Remaining operational notes:
 
-1. **Local Rust/Tauri verification gap in bootstrap sandbox:** The Phase 1 development sandbox lacks `rustc`, `cargo`, WebKit2GTK, a display server, and `crates.io` network access. Rust compilation, tests, and `npm run tauri dev` window opening cannot be verified locally in this environment (CI on GitHub Actions verifies build/clippy/tests across Linux, macOS, and Windows; interactive window opening remains unverified).
-2. **Missing `Cargo.lock` until generated with Cargo access:** Reproducible `--locked` builds require a generated `Cargo.lock` once an environment with Cargo + `crates.io` creates it.
-3. **Rusturbo stdout buffering/discard breaks `--message-format=json`:** Verified in `../Rusturbo/src/process.rs` and `src/main.rs` (see `docs/rusturbo-integration.md`).
-4. **Rusturbo lacks `check`/`test` subcommands and ignores `profile.jobs` during `build`/`run`:** Requires fallback/workaround in `anar-runner`.
-5. **Cross-platform process-tree termination:** Stopping a spawned web server or infinite loop (`cargo run` -> child binary, or `rusturbo run` -> child binary) requires Unix process groups (`killpg`) and Windows Job Objects (`AssignProcessToJobObject`) so child processes are not orphaned.
-6. **Large-file UI responsiveness (5 MB+ Rust files):** CodeMirror 6 viewport virtualization vs. synchronous Rust syntax/LSP `didChange` payloads could freeze the webview or saturate `rust-analyzer` if not debounced/bounded.
-7. **`rust-analyzer` startup/memory overhead and crash recovery:** Large workspaces (e.g., `bevy`, `tauri`) consume significant RAM and time during initial proc-macro/build-script indexing.
-8. **Framework run-profile diversity:** Web/WASM frameworks (`dioxus`, `leptos`, `yew`) and GUI/game frameworks (`tauri`, `bevy`) have different CLI tools (`dx`, `trunk`, `cargo-tauri`), stdout readiness markers, and port bindings compared to `axum`/`actix-web`/`rocket`.
-9. **PTY (`portable-pty`) Windows ConPTY vs. Unix PTY differences:** Terminal resize, CRLF translation, and signal delivery differ across Windows ConPTY, macOS, and Linux.
-10. **Linux WebKitGTK / Wayland rendering & sandbox quirks:** Tauri 2 on Linux depends on `webkit2gtk-4.1` and can encounter blank rendering or GPU/DMA-BUF issues on certain Wayland/Nvidia setups.
+1. **Headless sandbox vs. live desktop GUI:** Automated CI verifies ESLint, Prettier, `tsc --noEmit`, Vitest, Vite build, `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test` across Linux, macOS, and Windows, while interactive WebView window behavior is verified by maintainers on desktop targets.
+2. **Missing `Cargo.lock` in repository:** `Cargo.lock` is not committed in the headless CI-only workflow (`--locked` builds require generating `Cargo.lock` locally with Cargo).
+3. **GitHub Releases ship source tags (no automated release binaries yet):** Windows/macOS/Linux installers or `anar-desktop.exe` are built locally with `npm run tauri build` until a release-binary workflow is added.

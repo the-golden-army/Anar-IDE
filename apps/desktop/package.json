@@ -1,7 +1,7 @@
 {
   "name": "anar-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Anar desktop Rust code editor UI",
   "type": "module",
   "scripts": {

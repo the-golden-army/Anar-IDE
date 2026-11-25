@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
 ### Added
 
-- `anar-core` shared diagnostic types (`DiagnosticItem`, `DiagnosticSpan`, `DiagnosticSeverity`).
+- `anar-core` shared diagnostic types (`DiagnosticItem`, `DiagnosticSpan`, `DiagnosticSeverity`) and `configure_background_command` helper to suppress console flashes (`CREATE_NO_WINDOW`) on Windows background tool spawns (`git`, `rust-analyzer`, `cargo`, `rusturbo`, `rustc`, `taskkill`).
 - `anar-runner` streaming Cargo execution (`build`, `run`, `check`, `test`), `--message-format=json` diagnostic parser, interactive `stdin` forwarding, and cross-platform process-tree termination (`process_group` + `kill` on Unix, `taskkill /T /F` on Windows).
+- Standalone `.rs` execution fallback in `anar-runner` (`start_run_with_backend_and_file`, `parse_rustc_stderr_line`): workspaces without `Cargo.toml` compile, check, test, and run directly via `rustc --error-format=json`.
 - Tauri runner commands (`start_cargo_run`, `stop_cargo_run`, `send_run_stdin`) streaming ordered `RunnerEvent`s over `tauri::ipc::Channel`.
 - TitleBar `Run` / `Build` / `Check` / `Test` / `Stop` controls (`F5`, `Shift+F5`, `Ctrl/Cmd+Shift+B`), live streaming **Output** console with interactive `stdin` input, and clickable **Problems** diagnostics that jump directly to the file, line, and column in CodeMirror.
 - `anar-lsp` `rust-analyzer` lifecycle manager, `Content-Length` JSON-RPC 2.0 transport, `file://` URI <-> workspace-relative path conversions, document synchronization (`didOpen`, debounced `didChange`, `didSave`, `didClose` with 1 MiB large-file guard), crash detection + bounded auto-restart with open-document replay, and `lsp://status` / `lsp://diagnostics` event emissions.
@@ -18,10 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `anar-frameworks` Phase 6 framework detector (`Cargo.toml`, workspace members, `src-tauri/Cargo.toml`, `Cargo.lock` across `axum`, `actix-web`, `rocket`, `dioxus`, `leptos`, `yew`, `tauri`, `bevy`, and `clap`), tailored run profiles (`dx serve`, `cargo leptos watch`, `trunk serve`, `cargo tauri dev`, Bevy dynamic linking, Clap CLI, and server port/tool checks), and 11 project scaffolding templates.
 - Tauri framework & template commands (`detect_workspace_frameworks`, `list_project_templates`, `pick_parent_folder`, `create_project_from_template`, `start_profile_run`) plus `NewProjectModal`, live **Framework Profile** / **Run Profiles** controls in `InspectorPanel`, and framework badges in `StatusBar`.
 - `anar-core::preferences` persistent `compilerBackend` (`Cargo` | `Rusturbo`) with `set_compiler_backend` Tauri command.
-- `anar-runner::rusturbo` Phase 7 Rusturbo integration: PATH/version probing, `rusturbo.toml` inspection, `rusturbo init` & `rusturbo analyze --json` parsing, `NO_COLOR=1` subprocess execution for `build`/`run` with automatic Cargo fallback for `check`/`test`, and fallback `rustc` stderr diagnostic parsing.
+- `anar-runner::rusturbo` Phase 7 Rusturbo integration: PATH/version probing (requiring both a binary and valid `--version` output), `rusturbo.toml` inspection, `rusturbo init` & `rusturbo analyze --json` parsing, `NO_COLOR=1` subprocess execution for `build`/`run` with automatic Cargo fallback for `check`/`test`, and fallback `rustc` stderr diagnostic parsing.
 - **Compiler Backend** switcher (`Cargo` / `Rusturbo`), `Analyze`, `Init rusturbo.toml`, and dependency-graph/linker/sccache/cache readout in `InspectorPanel`, plus live backend status in `StatusBar` and `TitleBar`.
 - `anar-workspace::search` and `anar-workspace::git` Phase 8 workspace text/fuzzy-file search (`search_workspace`, `find_workspace_files`) and Git status, unified diff, stage, and unstage commands (`git_status`, `git_diff`, `git_stage_file`, `git_unstage_file`).
 - `anar-runner::pty` cross-platform interactive PTY terminal manager backed by `portable-pty` (`pty_spawn`, `pty_write`, `pty_resize`, `pty_kill`) and `@xterm/xterm` + `@xterm/addon-fit` UI (`TerminalView`, `SearchView`, `GitView`).
+- Desktop IDE UI redesign (`v2.3.0` UI shell): redesigned `TitleBar`, `ActivityRail`, `SidebarPanel`, `BottomPanel`, `InspectorPanel`, `ExtensionsView`, smooth panel resizing, `Ctrl+/-/0` zoom scaling, fullscreen toggle, increased UI/editor/terminal typography scale, and non-truncating error banners.
+
+### Fixed
+
+- Drop Windows ConPTY master after child process exit before joining PTY reader thread to avoid shutdown hangs.
+- Treat broken `rusturbo` shims/wrappers (missing valid `--version` output) as unavailable in `probe_rusturbo_status` and surface install hints in `InspectorPanel`.
+- Prevent Windows `cmd` console windows from flashing open on background CLI invocations.
+- Support running/building/checking standalone `.rs` files without requiring a `Cargo.toml`.
 
 ## [0.1.0] - 2026-11-21
 
@@ -52,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository hygiene files (`README.md`, `CONTRIBUTING.md`, `LICENSE`, `SECURITY.md`, `.gitignore`, `.editorconfig`, `rustfmt.toml`, issue/PR templates).
 - GitHub Actions CI workflow running frontend and Rust quality gates across Linux, macOS, and Windows.
 
-[0.1.0]: https://github.com/Nour-yahyaoui/anar/releases/tag/v0.1.0
-[0.1.0-alpha.1]: https://github.com/Nour-yahyaoui/anar/releases/tag/v0.1.0-alpha.1
-[0.0.1]: https://github.com/Nour-yahyaoui/anar/releases/tag/v0.0.1
+[Unreleased]: https://github.com/the-golden-army/Anar-IDE/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/the-golden-army/Anar-IDE/releases/tag/v0.2.0
+[0.1.0]: https://github.com/the-golden-army/Anar-IDE/releases/tag/v0.1.0
+[0.1.0-alpha.1]: https://github.com/the-golden-army/Anar-IDE/releases/tag/v0.1.0-alpha.1
+[0.0.1]: https://github.com/the-golden-army/Anar-IDE/releases/tag/v0.0.1

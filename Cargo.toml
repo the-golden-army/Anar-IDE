@@ -10,11 +10,11 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.77"
 license = "MIT"
-repository = "https://github.com/Nour-yahyaoui/anar"
+repository = "https://github.com/the-golden-army/Anar-IDE"
 authors = ["Nour Yahyaoui"]
 
 [workspace.dependencies]
